@@ -17,25 +17,25 @@ enum processes{Earnings, Dividends, Free_Cash_Flows};
 
 static tuple<VectorXd,VectorXd,VectorXd,MatrixXd, double, double> params(processes process){
 //trade period
-    double trade_period = 1000;
+    double trade_period = 10000;
 
 
 
 //cross-sectional correlations
     MatrixXd div_cross_corr(3, 3);
     div_cross_corr << 1, 0.251, 0.034,
-            0.034, 1, 0.3,
-            0.3, 0.034,1;
+            0.251, 1, 0.3,
+            0.034,  0.3,1;
 
     MatrixXd earnings_cross_corr(3, 3);
-    earnings_cross_corr <<  1, 0.251, 0.034,
-            0.034, 1, 0.3,
-            0.3, 0.034,1;
+    earnings_cross_corr << 1, 0.251, 0.034,
+            0.251, 1, 0.3,
+            0.034,  0.3,1;
 
     MatrixXd fcf_cross_corr(3, 3);
-    fcf_cross_corr <<       1, 0.251, 0.034,
-            0.034, 1, 0.3,
-            0.3, 0.034,1;
+    fcf_cross_corr << 1, 0.251, 0.034,
+            0.251, 1, 0.3,
+            0.034,  0.3,1;
 
 
 //auto-correlations
@@ -89,8 +89,8 @@ static tuple<VectorXd,VectorXd,VectorXd,MatrixXd, double, double> params(process
     fcf_sig(2) = 007.6;
 
     //Initial values
-    double E_o = 0.4048; //TODO add initial values for dividends and fcf
-    double D_o = 0;//
+    double E_o = 40.48; //TODO add initial values for dividends and fcf
+    double D_o = 15.39;//
 
     tuple<VectorXd,VectorXd,VectorXd,MatrixXd, double,double> parameters;
 
@@ -120,7 +120,7 @@ static tuple<VectorXd,VectorXd,VectorXd,MatrixXd, double, double> params(process
         get<5>(parameters) = trade_period;
 
     }
-    return parameters;
+return parameters;
 
 }
 
