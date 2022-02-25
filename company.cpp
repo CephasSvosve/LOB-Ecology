@@ -49,7 +49,7 @@ company::get_identifier(){
 }
 
 
-map<int, double>
+vector<double>
 company::get_hist_price(){
     return this->historical_price;
 }
@@ -76,10 +76,10 @@ company::set_price(int t, double bid, double ask){
     this->market_price = make_tuple(t, clearing_price);
 
     if(historical_price.size()<250){
-        historical_price.emplace(t,clearing_price);
+        historical_price.push_back(clearing_price);
     }else{
         historical_price.erase(historical_price.begin());
-        historical_price.emplace(t,clearing_price);
+        historical_price.push_back(clearing_price);
     }
     //stack_mp(historical_price,250,t,clearing_price);
 
@@ -121,12 +121,14 @@ company::get_price(){
 }
 
 // a method overload which returns price at a given time in history
-map<int, double>
+vector<double>
 company::get_price_range(int range){
-    map<int, double> result;
-    for(auto &[k,i] : this->historical_price){
-        if(k > this->historical_price.size()-range){
-            result.emplace(k,i);
+    vector<double> result;
+    for(int i = 0; i < range; i++){
+        if(i<this->historical_price.size()) {
+            result.push_back(this->historical_price.rbegin()[i]);
+        } else{
+            break;
         }
     }
     return result;
