@@ -3,6 +3,7 @@
 //
 
 #include "funds.h"
+#include <string>
 
 funds::funds() {
 
@@ -13,26 +14,45 @@ funds::funds() {
 
 map<int, order>
         funds::invest(){
+    int a = this->clock.current_time();
     map<int, order> result;
     switch (this->fund_philosophy) {
 
         case 0:
-            result= this->value_demand();
-            break;
-//        case 1:
-//           std::cout<<"growth"<<std::endl;
-//            result= this->growth_demand();
-//            break;
-        case 1:
-            result= this->noise_demand();
-            break;
-        case 2:
-            if(this->clock.current_time()>1000 /*window_size*/){
-            result= this->momentum_demand();}
+            result= this->ag_value_demand();
             break;
 
- //       case 6:
-//            break;//TODO ADD INDEX DEMAND FUNCTION
+        case 1:
+            result= this->ag_noise_demand();
+            break;
+        case 2:
+            if(a>window_size){
+            result= this->ag_momentum_demand();}
+            break;
+        case 3:
+            if (a>0){
+            result= this->ag_growth_demand();}
+            break;
+        case 4:
+            result= this->ag_index_demand();
+            break;
+        case 5:
+            result= this->value_demand();
+            break;
+        case 6:
+            result= this->noise_demand();
+            break;
+        case 7:
+            if(a>window_size){
+                result= this->momentum_demand();}
+            break;
+        case 8:
+            if (a>0){
+            result= this->growth_demand();}
+            break;
+        case 9:
+            result= this->index_demand();
+            break;
         default:
             break;
 
@@ -46,37 +66,54 @@ void funds::trade_strategy(trading_strategy tradingStrategy){
     this->fund_philosophy = tradingStrategy;
 }
 
-double funds::compute_earnings(company &stock, int &time, int &reb_period){
 
+int funds::concat(int a, int b)
+{
 
-    //earnings
+    // Convert both the integers to string
+    string s1 = to_string(a);
+    string s2 = to_string(b);
 
-    auto D_o = stock.get_dividend(0);//earnings at time 0
-    auto D_t = stock.get_dividend(time);//recent earnings
-    //auto t_reb = time - reb_period*floor(time/reb_period);//number of ticks past rebalancing day
-    double intrinsic_value;
-    if(time > 0){
-        double growth = D_t/D_o;
-        double g_rate = pow(growth,(1./time))-1;//earnings historical growth rate
-        double r_free_rate = pow(1.02,1./252.)-1;
-        double capm = this->get_CAPM().find(stock.get_identifier())->second;
-//        std::cout<<"time tick "<<capm <<std::endl;
-        if(isnan(capm)){
-            intrinsic_value =D_t/0.02;
-        }else{
-        intrinsic_value = D_t*(1+g_rate)/(capm - g_rate);
-        }
-        }
-    else{
-        intrinsic_value = D_o /0.02;
-    }
+    // Concatenate both strings
+    string s = s1 + s2;
 
-    return intrinsic_value;
+    // Convert the concatenated string
+    // to integer
+    int c = stoi(s);
+
+    // return the formed integer
+    return c;
 }
 
+double min(double a, double b){
 
+    double result = 0;
+    bool a_is_minimum = a<b;
+    if(a_is_minimum){
+        result = a;
+    }else{
+        result = b;
+    }
+
+    return result;
+
+}
+
+double max(double a, double b){
+
+    double result = 0;
+    bool a_is_maximum = a>b;
+    if(a_is_maximum){
+        result = a;
+    }else{
+        result = b;
+    }
+
+    return result;
+
+}
 std::map<int,order>
-funds::value_demand(){
+funds::ag_value_demand(){
     //Params definition
     map<int,order> result_;
     auto quotes = this->stocks_on_market;
@@ -84,7 +121,7 @@ funds::value_demand(){
     double portfolio_alloc = 0.6;// wealth allocated to stock potfolio
     double sum_of_signals;
     double phi; //trading signal for stock i
-    auto tick = clock.current_time();
+    auto t = clock.current_time();
 
 
 
@@ -95,7 +132,7 @@ funds::value_demand(){
     for(auto &[k, v] : quotes){
         const auto &[time, bid,ask] = v.get_price();
         auto quoted_price_ = (bid + ask)/2.;
-        auto earnings = v.get_earnings(tick);
+        auto earnings = v.get_earnings(t);
         phi = -(log((quoted_price_)/earnings)-log(Beta));//stock signal
         sum_of_signals = sum_of_signals + abs(phi);
     }
@@ -107,10 +144,10 @@ funds::value_demand(){
         //the following line searches whether a trader already holds inventory of the stock in subject
         // and stores the value in j
         auto i = stocks_at_hand.find(k);
-        double j = 0;
-        if (stocks_at_hand.end() != i){j = i->second;}
+        double current_position = 0;
+        if (stocks_at_hand.end() != i){current_position = i->second;}
         const auto &[time, bid,ask] = v.get_price();
-        auto earnings = v.get_earnings(tick);
+        auto earnings = v.get_earnings(t);
         auto quoted_price_ = (bid+ask)/2.;
 
 
@@ -127,110 +164,159 @@ funds::value_demand(){
         order limit_order;
 
 
-       // std::cout<<"earnings "<<earnings<<std::endl;
         int order_num;
-        order_num = (10*tick) +k;
-        //this->reb_period = 1;
+        order_num = concat(t,k);
+
 
 
 //......we compute a market order which represents an instantaneous trader's entry into a position given
         // the day is a rebalancing date or the fund has received new investment wealth inflow.
-        if(tick == this->reb_period*floor(tick/this->reb_period)){
+        if(t == this->reb_period*floor(t/this->reb_period)){
 
-            excess_demand_market = (this->wealth * allocation * portfolio_alloc/(quoted_price_))-j;
-            if (excess_demand_market < 0) {
+            auto target_position = this->wealth * allocation * portfolio_alloc/(quoted_price_);
+            excess_demand_market = target_position - current_position;
+            bool liquidity_required;
+
+            //check if there are resources to make the desired trade
+            if(0 <= target_position &&  target_position <= current_position){
+                order_num = concat(order_num,0);
                 market_order.set_id(this->get_identifier());
-                // std::cout<<"value identifier "<< this->get_identifier()<<std::endl;
-                std::cout << tick << "value identifier cash " << this->cash_at_hand << " *j* " << j << " excessdem "
-                          << excess_demand_market << " stocksathand "<<this->stocks_at_hand.find(k)->second<<std::endl;
                 market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
                 market_order.set_ordered_asset(k);
                 market_order.set_order_size(excess_demand_market, quoted_price_);
                 market_order.set_status(order::active);
                 result_.emplace(order_num, market_order);
 
-            }else if (excess_demand_market > 0){
-                bool liquid = (this->cash_at_hand > (excess_demand_market*quoted_price_));
+            }else if((target_position< 0) && (current_position > 0)){
+                //if target is a negative position but we currently have a positive number of stocks,
+                // we first sell the stocks we have then short sell the remainder
+                order_num = concat(order_num,0);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(-current_position, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
 
-                if(liquid){
-                    market_order.set_id(this->get_identifier());
-                    // std::cout<<"value identifier "<< this->get_identifier()<<std::endl;
-                    std::cout << tick << "value identifier cash " << this->cash_at_hand << " *j* " << j << " excessdem "
-                              << excess_demand_market << " stocksathand "<<this->stocks_at_hand.find(k)->second<<std::endl;
-                    market_order.set_order_type(order::market);
-                    market_order.set_ordered_asset(k);
-                    market_order.set_order_size(excess_demand_market, quoted_price_);
-                    market_order.set_status(order::active);
-                    result_.emplace(order_num, market_order);
-                }
-                else{
 
-                    auto demand = (this->cash_at_hand * allocation * portfolio_alloc/(quoted_price_));
+                double remaining_demand = min(abs(target_position*quoted_price_),this->cash_at_hand);
+
+                if(remaining_demand>0){
+                    auto demand = (-remaining_demand/(quoted_price_));
+                    order_num = concat(order_num,0);
                     market_order.set_id(this->get_identifier());
                     market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
                     market_order.set_ordered_asset(k);
                     market_order.set_order_size(demand, quoted_price_);
                     market_order.set_status(order::active);
                     result_.emplace(order_num, market_order);
                 }
+            }else {
+                double remaining_demand = min(abs(excess_demand_market*quoted_price_),this->cash_at_hand);
+                if(remaining_demand>0){
+                    auto sign = excess_demand_market/abs(excess_demand_market);
+                    auto demand = sign * remaining_demand/quoted_price_;
+                    order_num = concat(order_num,0);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+
+                }
             }
+                //put limit orders to close positions when target is reached
+            if((this->stocks_at_hand.find(k)->second<0) && (this->cash_at_hand>0)) {
 
+                double disposable_income_ = min(abs(this->stocks_at_hand.find(k)->second*quoted_price_), this->cash_at_hand);
+                order_num = concat(order_num, 1);
+                excess_demand_limit = disposable_income_/quoted_price_;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
 
-            order_num = (10 * (tick + 1)) + k;
-            excess_demand_limit = -this->stocks_at_hand.find(k)->second;
-            limit_order.set_id(this->get_identifier());
-            limit_order.set_order_type(order::limit);
-            limit_order.set_ordered_asset(k);
-            auto target_price = Beta * earnings;
-            limit_order.set_order_size(excess_demand_limit, target_price);
-            limit_order.set_status(order::active);
-            result_.emplace(order_num, limit_order);
+            }else if(this->stocks_at_hand.find(k)->second>0){
+                order_num = concat(order_num, 1);
+                excess_demand_limit = -this->stocks_at_hand.find(k)->second;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+            }
+                    }
 
-        }else
-
+        //when time is not a rebalancing date, adjust positions using excess cash (e.g. from dividends)
+        else
         {
-            auto disposable_income = this->cash_at_hand - (1-portfolio_alloc)*this->wealth;
-            if(disposable_income > 0 && this->cash_at_hand > 0){
-            excess_demand_market = (disposable_income * allocation * portfolio_alloc/(quoted_price_))-j;
+            auto disposable_income = this->cash_at_hand - ((1-portfolio_alloc)*this->wealth);
+            if((disposable_income > 0) && (this->cash_at_hand > 0)) {
+                excess_demand_market = (disposable_income * allocation * portfolio_alloc / (quoted_price_)) - current_position;
+
+                order_num = concat(order_num,0);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
             }
-            order_num = (10 * (tick + 1)) + k;
-            std::cout<<tick<<"value identifier cash "<<this->cash_at_hand<<" *j* "<<j <<" excessdem "<<excess_demand_market
-                    << " stocksathand "<<this->stocks_at_hand.find(k)->second<<std::endl;
-            market_order.set_id(this->get_identifier());
-            market_order.set_order_type(order::market);
-            market_order.set_ordered_asset(k);
-            market_order.set_order_size(excess_demand_market,quoted_price_);
-            market_order.set_status(order::active);
-            result_.emplace(order_num, market_order);
 
+            //put limit orders to close positions when target is reached
+            if((this->stocks_at_hand.find(k)->second<0) && (this->cash_at_hand>0)) {
 
-            order_num = (10*(tick+1)) + k;
-            excess_demand_limit = -this->stocks_at_hand.find(k)->second;
-            limit_order.set_id(this->get_identifier());
-            limit_order.set_order_type(order::limit);
-            limit_order.set_ordered_asset(k);
-            auto target_price = Beta * earnings;
-            limit_order.set_order_size(excess_demand_limit, target_price);
-            limit_order.set_status(order::active);
-            result_.emplace(order_num, limit_order);
+                double disposable_income_ = min(abs(this->stocks_at_hand.find(k)->second*quoted_price_), this->cash_at_hand);
+                order_num = concat(order_num, 1);
+                excess_demand_limit = disposable_income_/quoted_price_;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+
+            }else if(this->stocks_at_hand.find(k)->second>0){
+                order_num = concat(order_num, 1);
+                excess_demand_limit = -this->stocks_at_hand.find(k)->second;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+            }
+
         }
-
-
     }
     return result_;
 }
 
 
 std::map<int,order>
-funds::growth_demand(){
+funds::ag_growth_demand(){
     //Params definition
     map<int,order> result_;
     auto quotes = this->stocks_on_market;
-    double Beta = 9;//dummy threshold TODO: link this variable with actual earnings threshold
+    //double Beta = 14;//dummy threshold TODO: link this variable with actual earnings threshold
     double portfolio_alloc = 0.6;// wealth allocated to stock potfolio
     double sum_of_signals;
     double phi; //trading signal for stock i
-    auto tick = clock.current_time();
+    auto t = clock.current_time();
 
 
 
@@ -239,26 +325,35 @@ funds::growth_demand(){
     for(auto &[k, v] : quotes){
         const auto &[time, bid,ask] = v.get_price();
         auto quoted_price_ = (bid + ask)/2.;
-        auto earnings = v.get_earnings(tick);
-        phi = (log((quoted_price_)/earnings)-log(Beta));//stock signal
+        auto E = v.get_earnings(t);
+        auto reb_time = this->reb_period * floor((t-1) / this->reb_period);
+        auto E_o = v.get_earnings(reb_time);
+         auto E_growth = max(0,100*(E-E_o)/E_o);
+        auto P_E      = quoted_price_/E;
+        (E_growth) > 0 ?: E_growth = P_E;
+        phi = -(log((P_E)/E_growth));//stock signal
         sum_of_signals = sum_of_signals + abs(phi);
     }
 
 
 
 //compute the ratio of each stock's signal relative to sum described in (1)
-    for(auto &[k, v] : quotes){
+    for(auto &[k, v] : quotes) {
         //the following line searches whether a trader already holds inventory of the stock in subject
         // and stores the value in j
         auto i = stocks_at_hand.find(k);
-        double j = 0;
-        if (stocks_at_hand.end() != i){j = i->second;}
+        double current_position = 0;
+        if (stocks_at_hand.end() != i) { current_position = i->second; }
         const auto &[time, bid, ask] = v.get_price();
-        auto quoted_price_ = (bid + ask)/2.;
-        auto earnings = v.get_earnings(tick);
-
-        phi =(log((quoted_price_)/earnings)-log(Beta));
-        auto allocation = phi/sum_of_signals; //stock wealth allocation
+        auto quoted_price_ = (bid + ask) / 2.;
+        auto E = v.get_earnings(t);
+        auto reb_time = this->reb_period * floor((t-1) / this->reb_period);
+        auto E_o = v.get_earnings(reb_time);
+         auto E_growth = max(0,100*(E-E_o)/E_o);
+        auto P_E      = quoted_price_/E;
+        (E_growth) > 0 ?: E_growth = P_E;
+        phi = -(log((P_E)/E_growth));//stock signal
+        auto allocation = phi / sum_of_signals; //stock wealth allocation
 
 
 
@@ -270,106 +365,156 @@ funds::growth_demand(){
         order limit_order;
 
 
-        // std::cout<<"earnings "<<earnings<<std::endl;
         int order_num;
-        order_num = (10*tick) +k;
-        //this->reb_period = 1;
+        order_num = concat(t,k);
+
 
 
 //......we compute a market order which represents an instantaneous trader's entry into a position given
         // the day is a rebalancing date or the fund has received new investment wealth inflow.
-        if(tick == this->reb_period*floor(tick/this->reb_period)){
+        if(t == this->reb_period*floor(t/this->reb_period)){
 
-            excess_demand_market = (this->wealth * allocation * portfolio_alloc/(quoted_price_))-j;
-            if (excess_demand_market < 0) {
+            auto target_position = this->wealth * allocation * portfolio_alloc/(quoted_price_);
+            excess_demand_market = target_position - current_position;
+            bool liquidity_required;
+
+            //check if there are resources to make the desired trade
+            if(0 <= target_position &&  target_position <= current_position){
+                order_num = concat(order_num,0);
                 market_order.set_id(this->get_identifier());
-                // std::cout<<"value identifier "<< this->get_identifier()<<std::endl;
-                std::cout << tick << "growth identifier cash " << this->cash_at_hand << " *j* " << j << " excessdem "
-                          << excess_demand_market << " stocksathand "<<this->stocks_at_hand.find(k)->second<<std::endl;
                 market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
                 market_order.set_ordered_asset(k);
                 market_order.set_order_size(excess_demand_market, quoted_price_);
                 market_order.set_status(order::active);
                 result_.emplace(order_num, market_order);
 
-            }else if (excess_demand_market > 0){
-                bool liquid = (this->cash_at_hand > (excess_demand_market*quoted_price_));
+            }else if((target_position< 0) && (current_position > 0)){
+                //if target is a negative position but we currently have a positive number of stocks,
+                // we first sell the stocks we have then short sell the remainder
+                order_num = concat(order_num,0);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(-current_position, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
 
-                if(liquid){
-                    market_order.set_id(this->get_identifier());
-                    // std::cout<<"value identifier "<< this->get_identifier()<<std::endl;
-                    std::cout << tick << "growth identifier cash " << this->cash_at_hand << " *j* " << j << " excessdem "
-                              << excess_demand_market << " stocksathand "<<this->stocks_at_hand.find(k)->second<<std::endl;
-                    market_order.set_order_type(order::market);
-                    market_order.set_ordered_asset(k);
-                    market_order.set_order_size(excess_demand_market, quoted_price_);
-                    market_order.set_status(order::active);
-                    result_.emplace(order_num, market_order);
-                }
-                else if(this->cash_at_hand > 0){
 
-                    auto demand = (this->cash_at_hand * allocation * portfolio_alloc/(quoted_price_));
+                double remaining_demand = min(abs(target_position*quoted_price_),this->cash_at_hand);
+
+                if(remaining_demand>0){
+                    auto demand = (-remaining_demand/(quoted_price_));
+                    order_num = concat(order_num,0);
                     market_order.set_id(this->get_identifier());
                     market_order.set_order_type(order::market);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
                     market_order.set_ordered_asset(k);
                     market_order.set_order_size(demand, quoted_price_);
                     market_order.set_status(order::active);
                     result_.emplace(order_num, market_order);
                 }
+            }else {
+                double remaining_demand = min(abs(excess_demand_market*quoted_price_),this->cash_at_hand);
+                if(remaining_demand>0){
+                    auto sign = excess_demand_market/abs(excess_demand_market);
+                    auto demand = sign * remaining_demand/quoted_price_;
+                    order_num = concat(order_num,0);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::market);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+
+                }
             }
+            //put limit orders to close positions when target is reached
+            if((this->stocks_at_hand.find(k)->second<0) && (this->cash_at_hand>0)) {
 
+                double disposable_income_ = min(abs(this->stocks_at_hand.find(k)->second*quoted_price_), this->cash_at_hand);
+                order_num = concat(order_num, 1);
+                excess_demand_limit = disposable_income_/quoted_price_;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = E* E_growth;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
 
-            order_num = (10 * (tick + 1)) + k;
-            excess_demand_limit = -this->stocks_at_hand.find(k)->second;
-            limit_order.set_id(this->get_identifier());
-            limit_order.set_order_type(order::limit);
-            limit_order.set_ordered_asset(k);
-            auto target_price = Beta * earnings;
-            limit_order.set_order_size(excess_demand_limit, target_price);
-            limit_order.set_status(order::active);
-            result_.emplace(order_num, limit_order);
-
-        }else
-
-        {
-            auto disposable_income = this->cash_at_hand - (1-portfolio_alloc)*this->wealth;
-            if(disposable_income > 0 && this->cash_at_hand > 0){
-                excess_demand_market = (disposable_income * allocation * portfolio_alloc/(quoted_price_))-j;
+            }else if(this->stocks_at_hand.find(k)->second>0){
+                order_num = concat(order_num, 1);
+                excess_demand_limit = -this->stocks_at_hand.find(k)->second;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = E* E_growth;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
             }
-            order_num = (10 * (tick + 1)) + k;
-            std::cout<<tick<<"growth identifier cash "<<this->cash_at_hand<<" *j* "<<j <<" excessdem "<<excess_demand_market
-                    << " stocksathand "<<this->stocks_at_hand.find(k)->second<<std::endl;
-            market_order.set_id(this->get_identifier());
-            market_order.set_order_type(order::market);
-            market_order.set_ordered_asset(k);
-            market_order.set_order_size(excess_demand_market,quoted_price_);
-            market_order.set_status(order::active);
-            result_.emplace(order_num, market_order);
-
-
-            order_num = (10*(tick+1)) + k;
-            excess_demand_limit = -this->stocks_at_hand.find(k)->second;
-            limit_order.set_id(this->get_identifier());
-            limit_order.set_order_type(order::limit);
-            limit_order.set_ordered_asset(k);
-            auto target_price = Beta * earnings;
-            limit_order.set_order_size(excess_demand_limit, target_price);
-            limit_order.set_status(order::active);
-            result_.emplace(order_num, limit_order);
         }
 
+            //when time is not a rebalancing date, adjust positions using excess cash (e.g. from dividends)
+        else
+        {
+            auto disposable_income = this->cash_at_hand - ((1-portfolio_alloc)*this->wealth);
+            if((disposable_income > 0) && (this->cash_at_hand > 0)) {
+                excess_demand_market = (disposable_income * allocation * portfolio_alloc / (quoted_price_)) - current_position;
 
+                order_num = concat(order_num,0);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }
+
+            //put limit orders to close positions when target is reached
+            if((this->stocks_at_hand.find(k)->second<0) && (this->cash_at_hand>0)) {
+
+                double disposable_income_ = min(abs(this->stocks_at_hand.find(k)->second*quoted_price_), this->cash_at_hand);
+                order_num = concat(order_num, 1);
+                excess_demand_limit = disposable_income_/quoted_price_;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = E* E_growth;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+
+            }else if(this->stocks_at_hand.find(k)->second>0){
+                order_num = concat(order_num, 1);
+                excess_demand_limit = -this->stocks_at_hand.find(k)->second;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = E* E_growth;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+            }
+
+        }
     }
     return result_;
 }
 
+
 std::map<int,order>
-funds::momentum_demand() {
+funds::ag_momentum_demand() {
 
 //Params definition
     map<int, order> result_;
     auto quotes = this->stocks_on_market;
-    double Beta = 9;//dummy threshold TODO: link this variable with actual earnings
+    //double Beta = 9;//dummy threshold TODO: link this variable with actual earnings
     double portfolio_alloc = 0.6;// wealth allocated to stock potfolio
     double sum_of_signals;
     double phi; //trading signal for stock i
@@ -384,8 +529,12 @@ funds::momentum_demand() {
             auto quoted_price_ = (get<1>(v.get_price()) + get<2>(v.get_price()))/2.;
             int window_size_MA1 = 50;
             int window_size_MA2 = 200;
-            auto MA1 = current_balance(v.get_price_range(window_size_MA1 - 1));
-            auto MA2 = current_balance(v.get_price_range(window_size_MA2 - 1));
+
+            vector<double> hist_prices_MA1 = v.get_price_range(window_size_MA1 - 1);
+            vector<double> hist_prices_MA2 = v.get_price_range(window_size_MA2 - 1);
+            double MA1 = std::accumulate(hist_prices_MA1.begin(), hist_prices_MA1.end(), 0);
+            double MA2 = std::accumulate(hist_prices_MA2.begin(), hist_prices_MA2.end(), 0);
+
             double trend1 = (MA1 + (quoted_price_)) / window_size_MA1;
             double trend2 = (MA2 + (quoted_price_)) / window_size_MA2;
             if (MA2> 0.) { phi = ((trend1 / trend2) - 1); }
@@ -398,106 +547,128 @@ funds::momentum_demand() {
 
 //compute the ratio of each stock's signal relative to sum described in (1)
     for (auto &[k, v] : quotes) {
-        double j = 0;
+        double current_position = 0;
         auto i = stocks_at_hand.find(k);
-        if (stocks_at_hand.end() != i) { j = i->second; }
+        if (stocks_at_hand.end() != i) { current_position = i->second; }
 
-            auto quoted_price_ = (get<1>(v.get_price())+get<2>(v.get_price()))/2.;
-            int window_size_MA1 = 50;
-            int window_size_MA2 = 200;
-            auto MA1 = current_balance(v.get_price_range(window_size_MA1 - 1));
-            auto MA2 = current_balance(v.get_price_range(window_size_MA2 - 1));
-            double trend1 = (MA1 + (quoted_price_)) / window_size_MA1;
-            double trend2 = (MA2 + (quoted_price_)) / window_size_MA2;
-            if (MA2 > 0.) { phi = ((trend1 / trend2) - 1); }
-            else { phi = 0.; }//stock signal
+        auto quoted_price_ = (get<1>(v.get_price()) + get<2>(v.get_price())) / 2.;
+        int window_size_MA1 = 50;
+        int window_size_MA2 = 200;
+
+        vector<double> hist_prices_MA1 = v.get_price_range(window_size_MA1 - 1);
+        vector<double> hist_prices_MA2 = v.get_price_range(window_size_MA2 - 1);
+        double MA1 = std::accumulate(hist_prices_MA1.begin(), hist_prices_MA1.end(), 0);
+        double MA2 = std::accumulate(hist_prices_MA2.begin(), hist_prices_MA2.end(), 0);
+
+        double trend1 = (MA1 + (quoted_price_)) / window_size_MA1;
+        double trend2 = (MA2 + (quoted_price_)) / window_size_MA2;
+        if (MA2 > 0.) { phi = ((trend1 / trend2) - 1); }
+        else { phi = 0.; }//stock signal
 
 
 //stock wealth allocation
-            auto allocation = phi / sum_of_signals;
+        auto allocation = phi / sum_of_signals;
 
 
 
 //investment in the subject stock
-            double excess_demand_market;
-            order market_order;
-            order limit_order;
-            auto order_num = (10*t) + k;
+        double excess_demand_market;
+        order market_order;
+        order limit_order;
+        auto order_num = concat(t,k);
 
 
 //......we compute a market order which represents an instantaneous trader's entry into a position given
-            // the day is a rebalancing date or the fund has received new investment wealth inflow.
+        // the day is a rebalancing date or the fund has received new investment wealth inflow.
+        if(t == this->reb_period*floor(t/this->reb_period)){
 
-            if(t == this->reb_period*floor(t/this->reb_period) && t > window_size){
+            auto target_position = this->wealth * allocation * portfolio_alloc/(quoted_price_);
+            excess_demand_market = target_position - current_position;
+            bool liquidity_required;
 
-                excess_demand_market = (this->wealth * allocation * portfolio_alloc/(quoted_price_))-j;
-                if (excess_demand_market < 0) {
+            //check if there are resources to make the desired trade
+            if(0 <= target_position &&  target_position <= current_position){
+                order_num = concat(order_num,0);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }else if((target_position< 0) && (current_position > 0)){
+                //if target is a negative position but we currently have a positive number of stocks,
+                // we first sell the stocks we have then short sell the remainder
+                order_num = concat(order_num,0);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(-current_position, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+
+                double remaining_demand = min(abs(target_position*quoted_price_),this->cash_at_hand);
+
+                if(remaining_demand>0){
+                    auto demand = (-remaining_demand/(quoted_price_));
+                    order_num = concat(order_num,0);
                     market_order.set_id(this->get_identifier());
-                    // std::cout<<"value identifier "<< this->get_identifier()<<std::endl;
-                    std::cout << t << "trend identifier cash " << this->cash_at_hand << " *j* " << j << " excessdem "
-                              << excess_demand_market << " stocksathand "<<this->stocks_at_hand.find(k)->second<<std::endl;
                     market_order.set_order_type(order::market);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
                     market_order.set_ordered_asset(k);
-                    market_order.set_order_size(excess_demand_market, quoted_price_);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+                }
+            }else {
+                double remaining_demand = min(abs(excess_demand_market*quoted_price_),this->cash_at_hand);
+                if(remaining_demand>0){
+                    auto sign = excess_demand_market/abs(excess_demand_market);
+                    auto demand = sign * remaining_demand/quoted_price_;
+                    order_num = concat(order_num,0);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::market);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
                     market_order.set_status(order::active);
                     result_.emplace(order_num, market_order);
 
-                }else if (excess_demand_market > 0){
-                    bool liquid = (this->cash_at_hand > (excess_demand_market*quoted_price_));
-
-                    if(liquid){
-                        market_order.set_id(this->get_identifier());
-                        // std::cout<<"value identifier "<< this->get_identifier()<<std::endl;
-                        std::cout << t << "trend identifier cash " << this->cash_at_hand << " *j* " << j << " excessdem "
-                                  << excess_demand_market << " stocksathand "<<this->stocks_at_hand.find(k)->second<<std::endl;
-                        market_order.set_order_type(order::market);
-                        market_order.set_ordered_asset(k);
-                        market_order.set_order_size(excess_demand_market, quoted_price_);
-                        market_order.set_status(order::active);
-                        result_.emplace(order_num, market_order);
-                    }
-                    else if(this->cash_at_hand > 0){
-
-                        auto demand = (this->cash_at_hand * allocation * portfolio_alloc/(quoted_price_));
-                        market_order.set_id(this->get_identifier());
-                        market_order.set_order_type(order::market);
-                        market_order.set_ordered_asset(k);
-                        market_order.set_order_size(demand, quoted_price_);
-                        market_order.set_status(order::active);
-                        result_.emplace(order_num, market_order);
-                    }
                 }
+            }
+        }
 
+            //when time is not a rebalancing date, adjust positions using excess cash (e.g. from dividends)
+        else
+        {
+            auto disposable_income = this->cash_at_hand - ((1-portfolio_alloc)*this->wealth);
+            if((disposable_income > 0) && (this->cash_at_hand > 0)) {
+                excess_demand_market = (disposable_income * allocation * portfolio_alloc / (quoted_price_)) - current_position;
 
-            }if( t > window_size)
-
-            {
-                auto disposable_income = this->cash_at_hand - (1-portfolio_alloc)*this->wealth;
-                if(disposable_income > 0 && this->cash_at_hand > 0){
-                    excess_demand_market = (disposable_income * allocation * portfolio_alloc/(quoted_price_))-j;
-                }
-                order_num = (10 * (t + 1)) + k;
-                std::cout<<t<<"trend identifier cash "<<this->cash_at_hand<<" *j* "<<j <<" excessdem "<<excess_demand_market
-                        << " stocksathand "<<this->stocks_at_hand.find(k)->second<<std::endl;
+                order_num = concat(order_num,0);
                 market_order.set_id(this->get_identifier());
                 market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
                 market_order.set_ordered_asset(k);
-                market_order.set_order_size(excess_demand_market,quoted_price_);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
                 market_order.set_status(order::active);
                 result_.emplace(order_num, market_order);
 
             }
 
-
         }
-        return result_;
     }
+    return result_;
+}
 
 
 MatrixXd funds::generateWhiteNoise1(int seed,int rows, int columns){
     MatrixXd randoms(rows, columns);
     VectorXd a;
-    int i =0;
+
 
     //algorithm for generating random numbers that are seeded on changing time
     time_t now = seed;
@@ -552,7 +723,7 @@ double funds::lateralcorrcoef(VectorXd a){
 
 
 std::map<int,order>
-funds::noise_demand(){
+funds::ag_noise_demand(){
     //Params definition
     map<int,order> result_;
     auto quotes = this->stocks_on_market;
@@ -565,11 +736,11 @@ funds::noise_demand(){
 
 
 //Ornstein Uhlenbeck params
-    MatrixXd dX = generateWhiteNoise1(6,3,1000);
+    MatrixXd dX = generateWhiteNoise1(6,3,10000);
 
     //noise with a half life of 6 years, to match empirical evedence
     double mean_reversion_rate = 1 - pow(0.5, 1/(6.0*252.0));
-    double sigma = .12;
+  double sigma = .0012;
 
     //Ornstein Uhlenbeck noise generation
     double  X_t ;
@@ -578,14 +749,6 @@ funds::noise_demand(){
     map<int, vector<double>> noise;
 
 
-//    for(auto &[k, v] : quotes) {
-//
-//        if (quotes.size() == dX.rows()) {
-//            noise.emplace(k, dX(c % 3));
-//
-//            c++;
-//        }
-//    }
 
 //compute a sum of exponents of signals, see McFadden choice function...........................(1)
     for(auto &[k, v] : quotes){
@@ -594,12 +757,11 @@ funds::noise_demand(){
         auto earnings = v.get_earnings(t);
         double var;
         double mean;
-        var = (0.5*pow(sigma,2)) * (1/mean_reversion_rate)*
-              (1-exp(-2*mean_reversion_rate*int(t)));
+        var = 0.012;//(0.5*pow(sigma,2)) * (1/mean_reversion_rate)*
+            //  (1-exp(-2*mean_reversion_rate*int(t)));
         mean =  0*(1-exp(-mean_reversion_rate * int(t)));
 
         X_t = mean + sqrt(var) * dX(i%3,t);
-        //std::cout<<"noise *"<<X_t<<std::endl;
         phi = -(log((quoted_price_)/earnings)-log(Beta)) + X_t;//stock signal
         sum_of_signals = sum_of_signals + abs(phi);
         i++;
@@ -608,21 +770,22 @@ funds::noise_demand(){
 
 
 c=0;
+
 //compute the ratio of each stock's signal relative to sum described in (1)
     for(auto &[k, v] : quotes){
         //the following line searches whether a trader already holds inventory of the stock in subject
         // and stores the value in j
         auto i = stocks_at_hand.find(k);
-        double j = 0;
-        if (stocks_at_hand.end() != i){j = i->second;}
+        double current_position = 0;
+        if (stocks_at_hand.end() != i){current_position = i->second;}
         const auto &[time, bid, ask] = v.get_price();
         auto quoted_price_ = (bid + ask)/2.;
         auto earnings = v.get_earnings(t);
 
         double var;
         double mean;
-        var = (0.5*pow(sigma,2)) * (1/mean_reversion_rate)*
-              (1-exp(-2*mean_reversion_rate*int(t)));
+        var = 0.012;//(0.5*pow(sigma,2)) * (1/mean_reversion_rate)*
+             // (1-exp(-2*mean_reversion_rate*int(t)));
         mean =  0*(1-exp(-mean_reversion_rate * int(t)));
         X_t = mean + sqrt(var) * dX(c%3,t);
         c++;
@@ -636,7 +799,7 @@ c=0;
         double excess_demand_limit;
         order market_order;
         order limit_order;
-        auto order_num = (10*t) + k;
+        auto order_num = concat(t,k);
 
 
 
@@ -644,139 +807,1152 @@ c=0;
         // the day is a rebalancing date or the fund has received new investment wealth inflow.
         if(t == this->reb_period*floor(t/this->reb_period)){
 
-            excess_demand_market = (this->wealth * allocation * portfolio_alloc/(quoted_price_))-j;
-            if (excess_demand_market < 0) {
+            auto target_position = this->wealth * allocation * portfolio_alloc/(quoted_price_);
+            excess_demand_market = target_position - current_position;
+            bool liquidity_required;
+
+            //check if there are resources to make the desired trade
+            if(0 <= target_position &&  target_position <= current_position){
+                order_num = concat(order_num,0);
                 market_order.set_id(this->get_identifier());
-                std::cout << t << "noise identifier cash " << this->cash_at_hand << " *j* " << j << " excessdem "
-                          << excess_demand_market << " stocksathand "<<this->stocks_at_hand.find(k)->second<<std::endl;
                 market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
                 market_order.set_ordered_asset(k);
                 market_order.set_order_size(excess_demand_market, quoted_price_);
                 market_order.set_status(order::active);
                 result_.emplace(order_num, market_order);
 
-            }else if (excess_demand_market > 0){
-                bool liquid = (this->cash_at_hand > (excess_demand_market*quoted_price_));
+            }else if((target_position< 0) && (current_position > 0)){
+                //if target is a negative position but we currently have a positive number of stocks,
+                // we first sell the stocks we have then short sell the remainder
+                order_num = concat(order_num,0);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(-current_position, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
 
-                if(liquid){
-                    market_order.set_id(this->get_identifier());
-                    // std::cout<<"value identifier "<< this->get_identifier()<<std::endl;
-                    std::cout << t << "noise identifier cash " << this->cash_at_hand << " *j* " << j << " excessdem "
-                              << excess_demand_market << " stocksathand "<<this->stocks_at_hand.find(k)->second<<std::endl;
-                    market_order.set_order_type(order::market);
-                    market_order.set_ordered_asset(k);
-                    market_order.set_order_size(excess_demand_market, quoted_price_);
-                    market_order.set_status(order::active);
-                    result_.emplace(order_num, market_order);
-                }
-                else{
 
-                    auto demand = (this->cash_at_hand * allocation * portfolio_alloc/(quoted_price_));
+                double remaining_demand = min(abs(target_position*quoted_price_),this->cash_at_hand);
+
+                if(remaining_demand>0){
+                    auto demand = (-remaining_demand/(quoted_price_));
+                    order_num = concat(order_num,0);
                     market_order.set_id(this->get_identifier());
                     market_order.set_order_type(order::market);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
                     market_order.set_ordered_asset(k);
                     market_order.set_order_size(demand, quoted_price_);
                     market_order.set_status(order::active);
                     result_.emplace(order_num, market_order);
                 }
+            }else {
+                double remaining_demand = min(abs(excess_demand_market*quoted_price_),this->cash_at_hand);
+                if(remaining_demand>0){
+                    auto sign = excess_demand_market/abs(excess_demand_market);
+                    auto demand = sign * remaining_demand/quoted_price_;
+                    order_num = concat(order_num,0);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::market);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+
+                }
             }
+            //put limit orders to close positions when target is reached
+            if((this->stocks_at_hand.find(k)->second<0) && (this->cash_at_hand>0)) {
 
+                double disposable_income_ = min(abs(this->stocks_at_hand.find(k)->second*quoted_price_), this->cash_at_hand);
+                order_num = concat(order_num, 1);
+                excess_demand_limit = disposable_income_/quoted_price_;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
 
-            order_num = (10 * (t + 1)) + k;
-            excess_demand_limit = -this->stocks_at_hand.find(k)->second;
-            limit_order.set_id(this->get_identifier());
-            limit_order.set_order_type(order::limit);
-            limit_order.set_ordered_asset(k);
-            auto target_price = Beta * earnings;
-            limit_order.set_order_size(excess_demand_limit, target_price);
-            limit_order.set_status(order::active);
-            result_.emplace(order_num, limit_order);
-
-        }else
-
-        {
-            auto disposable_income = this->cash_at_hand - (1-portfolio_alloc)*this->wealth;
-            if(disposable_income > 0 && this->cash_at_hand > 0){
-                excess_demand_market = (disposable_income * allocation * portfolio_alloc/(quoted_price_))-j;
+            }else if(this->stocks_at_hand.find(k)->second>0){
+                order_num = concat(order_num, 1);
+                excess_demand_limit = -this->stocks_at_hand.find(k)->second;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
             }
-            order_num = (10 * (t + 1)) + k;
-            std::cout<<t<<"noise identifier cash "<<this->cash_at_hand<<" *j* "<<j <<" excessdem "<<excess_demand_market
-                    << " stocksathand "<<this->stocks_at_hand.find(k)->second<<std::endl;
-            market_order.set_id(this->get_identifier());
-            market_order.set_order_type(order::market);
-            market_order.set_ordered_asset(k);
-            market_order.set_order_size(excess_demand_market,quoted_price_);
-            market_order.set_status(order::active);
-            result_.emplace(order_num, market_order);
-
-
-            order_num = (10*(t+1)) + k;
-            excess_demand_limit = -this->stocks_at_hand.find(k)->second;
-            limit_order.set_id(this->get_identifier());
-            limit_order.set_order_type(order::limit);
-            limit_order.set_ordered_asset(k);
-            auto target_price = Beta * earnings;
-            limit_order.set_order_size(excess_demand_limit, target_price);
-            limit_order.set_status(order::active);
-            result_.emplace(order_num, limit_order);
         }
 
+            //when time is not a rebalancing date, adjust positions using excess cash (e.g. from dividends)
+        else
+        {
+            auto disposable_income = this->cash_at_hand - ((1-portfolio_alloc)*this->wealth);
+            if((disposable_income > 0) && (this->cash_at_hand > 0)) {
+                excess_demand_market = (disposable_income * allocation * portfolio_alloc / (quoted_price_)) - current_position;
 
+                order_num = concat(order_num,0);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }
+
+            //put limit orders to close positions when target is reached
+            if((this->stocks_at_hand.find(k)->second<0) && (this->cash_at_hand>0)) {
+
+                double disposable_income_ = min(abs(this->stocks_at_hand.find(k)->second*quoted_price_), this->cash_at_hand);
+                order_num = concat(order_num, 1);
+                excess_demand_limit = disposable_income_/quoted_price_;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+
+            }else if(this->stocks_at_hand.find(k)->second>0){
+                order_num = concat(order_num, 1);
+                excess_demand_limit = -this->stocks_at_hand.find(k)->second;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+            }
+
+        }
     }
     return result_;
 }
 
 
+std::map<int, order> funds::ag_index_demand(){
+    //Params definition
+    map<int,order> result_;
+    auto quotes = this->stocks_on_market;
+    double portfolio_alloc = 1;// wealth allocated to stock potfolio
+    double sum_of_signals;
+    double phi; //trading signal for stock i
+    auto t = clock.current_time();
 
-//std::map<int,order>
-//funds::mm_demand(){
-//    //Params definition
-//    map<int,order> result_;
-//    auto quotes = this->stocks_on_market;
-//    auto tick = clock.current_time();
-//
-////compute the ratio of each stock's signal relative to sum described in (1)
-//    for(auto &[k, v] : quotes){
-//
-//        const auto &[time, bid, ask] = v.get_price();
-//        auto quoted_price_ = (bid + ask)/2.;
-//
-////investment in the subject stock
-//        double excess_demand_market;
-//        double excess_demand_limit;
-//        order market_order;
-//        order limit_order;
-//
-//
-//        // std::cout<<"earnings "<<earnings<<std::endl;
-//        int order_num;
-//        order_num = (10*tick) +k;
-//        //this->reb_period = 1;
-//
-//
-////......we compute a market order which represents an instantaneous trader's entry into a position given
-//        // the day is a rebalancing date or the fund has received new investment wealth inflow.
-//
-//            excess_demand_market = 1'000;
-//            market_order.set_id(this->get_identifier());
-//            market_order.set_order_type(order::market);
-//            market_order.set_ordered_asset(k);
-//            market_order.set_order_size(excess_demand_market,quoted_price_);
-//            market_order.set_status(order::active);
-//            result_.emplace(order_num, market_order);
-//            order_num = (10*(tick+1)) + k;
-//
-//            excess_demand_limit = -this->stocks_at_hand.find(k)->second;
-//            limit_order.set_id(this->get_identifier());
-//            limit_order.set_order_type(order::market);
-//            limit_order.set_ordered_asset(k);
-//            limit_order.set_order_size(excess_demand_limit, quoted_price_);
-//            limit_order.set_status(order::active);
-//            result_.emplace(order_num, limit_order);
-//
-//
-//
-//
-//    }
-//    return result_;
-//}
+
+
+
+
+
+//compute a sum of exponents of signals, see McFadden choice function...........................(1)
+    for(auto &[k, v] : quotes){
+        const auto &[time, bid,ask] = v.get_price();
+        auto quoted_price_ = (bid + ask)/2.;
+        auto shares_outstanding = v.get_shares_outstanding();
+        phi = shares_outstanding * quoted_price_;//stock signal
+        sum_of_signals = sum_of_signals + abs(phi);
+    }
+
+
+
+//compute the ratio of each stock's signal relative to sum described in (1)
+    for(auto &[k, v] : quotes) {
+        //the following line searches whether a trader already holds inventory of the stock in subject
+        // and stores the value in j
+        auto i = stocks_at_hand.find(k);
+        double current_position = 0;
+        if (stocks_at_hand.end() != i) { current_position = i->second; }
+        const auto &[time, bid, ask] = v.get_price();
+        auto shares_outstanding = v.get_shares_outstanding();
+        auto quoted_price_ = (bid + ask) / 2.;
+
+
+        phi = shares_outstanding * quoted_price_;
+        auto allocation = phi / sum_of_signals; //stock wealth allocation
+
+
+
+
+//investment in the subject stock
+        double excess_demand_market;
+        double excess_demand_limit;
+        order market_order;
+        order limit_order;
+
+
+        // std::cout<<"earnings "<<earnings<<std::endl;
+        int order_num;
+        order_num = concat(t,k);
+        //this->reb_period = 1;
+
+
+//......we compute a market order which represents an instantaneous trader's entry into a position given
+        // the day is a rebalancing date or the fund has received new investment wealth inflow.
+        if(t == this->reb_period*floor(t/this->reb_period)){
+
+            auto target_position = this->wealth * allocation * portfolio_alloc/(quoted_price_);
+            excess_demand_market = target_position - current_position;
+            bool liquidity_required;
+
+            //check if there are resources to make the desired trade
+            if(0 <= target_position &&  target_position <= current_position){
+                order_num = concat(order_num,0);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }else if((target_position< 0) && (current_position > 0)){
+                //if target is a negative position but we currently have a positive number of stocks,
+                // we first sell the stocks we have then short sell the remainder
+                order_num = concat(order_num,0);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::market);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(-current_position, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+
+                double remaining_demand = min(abs(target_position*quoted_price_),this->cash_at_hand);
+
+                if(remaining_demand>0){
+                    auto demand = (-remaining_demand/(quoted_price_));
+                    order_num = concat(order_num,0);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::market);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+                }
+            }else {
+                double remaining_demand = min(abs(excess_demand_market*quoted_price_),this->cash_at_hand);
+                if(remaining_demand>0){
+                    auto sign = excess_demand_market/abs(excess_demand_market);
+                    auto demand = sign * remaining_demand/quoted_price_;
+                    order_num = concat(order_num,0);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::market);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+
+                }
+            }
+
+        }
+    }
+    return result_;
+}
+
+
+std::map<int, order>
+funds::value_demand(){
+    //Params definition
+    map<int,order> result_;
+    auto quotes = this->stocks_on_market;
+    double Beta = 9;//dummy threshold TODO: link this variable with actual earnings threshold
+    double portfolio_alloc = 0.6;// wealth allocated to stock potfolio
+    double sum_of_signals;
+    double phi; //trading signal for stock i
+    auto t = clock.current_time();
+
+
+
+
+
+
+//compute a sum of exponents of signals, see McFadden choice function...........................(1)
+    for(auto &[k, v] : quotes){
+        const auto &[time, bid,ask] = v.get_price();
+        auto quoted_price_ = (bid + ask)/2.;
+        auto earnings = v.get_earnings(t);
+        phi = -(log((quoted_price_)/earnings)-log(Beta));//stock signal
+        sum_of_signals = sum_of_signals + abs(phi);
+    }
+
+
+
+//compute the ratio of each stock's signal relative to sum described in (1)
+    for(auto &[k, v] : quotes){
+        //the following line searches whether a trader already holds inventory of the stock in subject
+        // and stores the value in j
+        auto i = stocks_at_hand.find(k);
+        double current_position = 0;
+        if (stocks_at_hand.end() != i){current_position = i->second;}
+        const auto &[time, bid,ask] = v.get_price();
+        auto earnings = v.get_earnings(t);
+        auto quoted_price_ = (bid+ask)/2.;
+
+
+        phi = -(log((quoted_price_)/earnings)-log(Beta));
+        auto allocation = phi/sum_of_signals; //stock wealth allocation
+
+
+
+
+//investment in the subject stock
+        double excess_demand_market;
+        double excess_demand_limit;
+        order market_order;
+        order limit_order;
+
+
+        int order_num;
+        order_num = concat(t,k);
+
+
+
+//......we compute a market order which represents an instantaneous trader's entry into a position given
+        // the day is a rebalancing date or the fund has received new investment wealth inflow.
+        if(t == this->reb_period*floor(t/this->reb_period)){
+
+            auto target_position = this->wealth * allocation * portfolio_alloc/(quoted_price_);
+            excess_demand_market = target_position - current_position;
+            bool liquidity_required;
+
+            //check if there are resources to make the desired trade
+            if(0 <= target_position &&  target_position <= current_position){
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }else if((target_position< 0) && (current_position > 0)){
+                //if target is a negative position but we currently have a positive number of stocks,
+                // we first sell the stocks we have then short sell the remainder
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(-current_position, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+
+                double remaining_demand = min(abs(target_position*quoted_price_),this->cash_at_hand);
+
+                if(remaining_demand>0){
+                    auto demand = (-remaining_demand/(quoted_price_));
+                    order_num = concat(order_num,1);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::limit);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+                }
+            }else {
+                double remaining_demand = min(abs(excess_demand_market*quoted_price_),this->cash_at_hand);
+                if(remaining_demand>0){
+                    auto sign = excess_demand_market/abs(excess_demand_market);
+                    auto demand = sign * remaining_demand/quoted_price_;
+                    order_num = concat(order_num,1);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::limit);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+
+                }
+            }
+            //put limit orders to close positions when target is reached
+            if((this->stocks_at_hand.find(k)->second<0) && (this->cash_at_hand>0)) {
+
+                double disposable_income_ = min(abs(this->stocks_at_hand.find(k)->second*quoted_price_), this->cash_at_hand);
+                order_num = concat(order_num, 1);
+                excess_demand_limit = disposable_income_/quoted_price_;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+
+            }else if(this->stocks_at_hand.find(k)->second>0){
+                order_num = concat(order_num, 1);
+                excess_demand_limit = -this->stocks_at_hand.find(k)->second;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+            }
+        }
+
+            //when time is not a rebalancing date, adjust positions using excess cash (e.g. from dividends)
+        else
+        {
+            auto disposable_income = this->cash_at_hand - ((1-portfolio_alloc)*this->wealth);
+            if((disposable_income > 0) && (this->cash_at_hand > 0)) {
+                excess_demand_market = (disposable_income * allocation * portfolio_alloc / (quoted_price_)) - current_position;
+
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }
+
+            //put limit orders to close positions when target is reached
+            if((this->stocks_at_hand.find(k)->second<0) && (this->cash_at_hand>0)) {
+
+                double disposable_income_ = min(abs(this->stocks_at_hand.find(k)->second*quoted_price_), this->cash_at_hand);
+                order_num = concat(order_num, 1);
+                excess_demand_limit = disposable_income_/quoted_price_;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+
+            }else if(this->stocks_at_hand.find(k)->second>0){
+                order_num = concat(order_num, 1);
+                excess_demand_limit = -this->stocks_at_hand.find(k)->second;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+            }
+
+        }
+    }
+    return result_;
+}
+
+
+std::map<int,order>
+funds::growth_demand(){
+    //Params definition
+    map<int,order> result_;
+    auto quotes = this->stocks_on_market;
+    //double Beta = 14;//dummy threshold TODO: link this variable with actual earnings threshold
+    double portfolio_alloc = 0.6;// wealth allocated to stock potfolio
+    double sum_of_signals;
+    double phi; //trading signal for stock i
+    auto t = clock.current_time();
+
+
+
+
+//compute a sum of exponents of signals, see McFadden choice function...........................(1)
+    for(auto &[k, v] : quotes){
+        const auto &[time, bid,ask] = v.get_price();
+        auto quoted_price_ = (bid + ask)/2.;
+        auto E = v.get_earnings(t);
+        auto reb_time = this->reb_period * floor((t-1) / this->reb_period);
+        auto E_o = v.get_earnings(reb_time);
+        auto E_growth = 100*(E-E_o)/E_o;
+        auto P_E      = quoted_price_/E;
+        (E_growth) > 0 ?: E_growth = P_E;
+        phi = -(log((P_E)/E_growth));//stock signal
+        sum_of_signals = sum_of_signals + abs(phi);
+    }
+
+
+
+//compute the ratio of each stock's signal relative to sum described in (1)
+    for(auto &[k, v] : quotes) {
+        //the following line searches whether a trader already holds inventory of the stock in subject
+        // and stores the value in j
+        auto i = stocks_at_hand.find(k);
+        double current_position = 0;
+        if (stocks_at_hand.end() != i) { current_position = i->second; }
+        const auto &[time, bid, ask] = v.get_price();
+        auto quoted_price_ = (bid + ask) / 2.;
+        auto E = v.get_earnings(t);
+        auto reb_time = this->reb_period * floor((t-1) / this->reb_period);
+        auto E_o = v.get_earnings(reb_time);
+         auto E_growth = max(0,100*(E-E_o)/E_o);
+        auto P_E      = quoted_price_/E;
+        (E_growth) > 0 ?: E_growth = P_E;
+        phi = -(log((P_E)/E_growth));//stock signal
+        auto allocation = phi / sum_of_signals; //stock wealth allocation
+
+
+
+
+//investment in the subject stock
+        double excess_demand_market;
+        double excess_demand_limit;
+        order market_order;
+        order limit_order;
+
+
+        int order_num;
+        order_num = concat(t,k);
+
+
+
+//......we compute a market order which represents an instantaneous trader's entry into a position given
+        // the day is a rebalancing date or the fund has received new investment wealth inflow.
+        if(t == this->reb_period*floor(t/this->reb_period)){
+
+            auto target_position = this->wealth * allocation * portfolio_alloc/(quoted_price_);
+            excess_demand_market = target_position - current_position;
+            bool liquidity_required;
+
+            //check if there are resources to make the desired trade
+            if(0 <= target_position &&  target_position <= current_position){
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }else if((target_position< 0) && (current_position > 0)){
+                //if target is a negative position but we currently have a positive number of stocks,
+                // we first sell the stocks we have then short sell the remainder
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(-current_position, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+
+                double remaining_demand = min(abs(target_position*quoted_price_),this->cash_at_hand);
+
+                if(remaining_demand>0){
+                    auto demand = (-remaining_demand/(quoted_price_));
+                    order_num = concat(order_num,1);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::limit);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+                }
+            }else {
+                double remaining_demand = min(abs(excess_demand_market*quoted_price_),this->cash_at_hand);
+                if(remaining_demand>0){
+                    auto sign = excess_demand_market/abs(excess_demand_market);
+                    auto demand = sign * remaining_demand/quoted_price_;
+                    order_num = concat(order_num,1);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::limit);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+
+                }
+            }
+            //put limit orders to close positions when target is reached
+            if((this->stocks_at_hand.find(k)->second<0) && (this->cash_at_hand>0)) {
+
+                double disposable_income_ = min(abs(this->stocks_at_hand.find(k)->second*quoted_price_), this->cash_at_hand);
+                order_num = concat(order_num, 1);
+                excess_demand_limit = disposable_income_/quoted_price_;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = E* E_growth;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+
+            }else if(this->stocks_at_hand.find(k)->second>0){
+                order_num = concat(order_num, 1);
+                excess_demand_limit = -this->stocks_at_hand.find(k)->second;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = E* E_growth;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+            }
+        }
+
+            //when time is not a rebalancing date, adjust positions using excess cash (e.g. from dividends)
+        else
+        {
+            auto disposable_income = this->cash_at_hand - ((1-portfolio_alloc)*this->wealth);
+            if((disposable_income > 0) && (this->cash_at_hand > 0)) {
+                excess_demand_market = (disposable_income * allocation * portfolio_alloc / (quoted_price_)) - current_position;
+
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }
+
+            //put limit orders to close positions when target is reached
+            if((this->stocks_at_hand.find(k)->second<0) && (this->cash_at_hand>0)) {
+
+                double disposable_income_ = min(abs(this->stocks_at_hand.find(k)->second*quoted_price_), this->cash_at_hand);
+                order_num = concat(order_num, 1);
+                excess_demand_limit = disposable_income_/quoted_price_;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = E* E_growth;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+
+            }else if(this->stocks_at_hand.find(k)->second>0){
+                order_num = concat(order_num, 1);
+                excess_demand_limit = -this->stocks_at_hand.find(k)->second;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = E* E_growth;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+            }
+
+        }
+    }
+    return result_;
+}
+
+
+std::map<int,order>
+funds::momentum_demand() {
+
+//Params definition
+    map<int, order> result_;
+    auto quotes = this->stocks_on_market;
+    //double Beta = 9;//dummy threshold TODO: link this variable with actual earnings
+    double portfolio_alloc = 0.6;// wealth allocated to stock potfolio
+    double sum_of_signals;
+    double phi; //trading signal for stock i
+    auto t = clock.current_time();
+
+
+
+
+//compute a sum of signals, see McFadden choice function...........................(1)
+    for (auto &[k, v] : quotes) {
+        if (t > window_size) {
+            auto quoted_price_ = (get<1>(v.get_price()) + get<2>(v.get_price()))/2.;
+            int window_size_MA1 = 50;
+            int window_size_MA2 = 200;
+
+            vector<double> hist_prices_MA1 = v.get_price_range(window_size_MA1 - 1);
+            vector<double> hist_prices_MA2 = v.get_price_range(window_size_MA2 - 1);
+            double MA1 = std::accumulate(hist_prices_MA1.begin(), hist_prices_MA1.end(), 0);
+            double MA2 = std::accumulate(hist_prices_MA2.begin(), hist_prices_MA2.end(), 0);
+
+            double trend1 = (MA1 + (quoted_price_)) / window_size_MA1;
+            double trend2 = (MA2 + (quoted_price_)) / window_size_MA2;
+            if (MA2> 0.) { phi = ((trend1 / trend2) - 1); }
+            else { phi = 0.; }//stock signal
+            sum_of_signals = sum_of_signals + abs(phi);
+        }
+    }
+
+
+
+//compute the ratio of each stock's signal relative to sum described in (1)
+    for (auto &[k, v] : quotes) {
+        double current_position = 0;
+        auto i = stocks_at_hand.find(k);
+        if (stocks_at_hand.end() != i) { current_position = i->second; }
+
+        auto quoted_price_ = (get<1>(v.get_price()) + get<2>(v.get_price())) / 2.;
+        int window_size_MA1 = 50;
+        int window_size_MA2 = 200;
+
+        vector<double> hist_prices_MA1 = v.get_price_range(window_size_MA1 - 1);
+        vector<double> hist_prices_MA2 = v.get_price_range(window_size_MA2 - 1);
+        double MA1 = std::accumulate(hist_prices_MA1.begin(), hist_prices_MA1.end(), 0);
+        double MA2 = std::accumulate(hist_prices_MA2.begin(), hist_prices_MA2.end(), 0);
+
+        double trend1 = (MA1 + (quoted_price_)) / window_size_MA1;
+        double trend2 = (MA2 + (quoted_price_)) / window_size_MA2;
+        if (MA2 > 0.) { phi = ((trend1 / trend2) - 1); }
+        else { phi = 0.; }//stock signal
+
+
+//stock wealth allocation
+        auto allocation = phi / sum_of_signals;
+
+
+
+//investment in the subject stock
+        double excess_demand_market;
+        order market_order;
+        order limit_order;
+        auto order_num = concat(t,k);
+
+
+//......we compute a market order which represents an instantaneous trader's entry into a position given
+        // the day is a rebalancing date or the fund has received new investment wealth inflow.
+        if(t == this->reb_period*floor(t/this->reb_period)){
+
+            auto target_position = this->wealth * allocation * portfolio_alloc/(quoted_price_);
+            excess_demand_market = target_position - current_position;
+            bool liquidity_required;
+
+            //check if there are resources to make the desired trade
+            if(0 <= target_position &&  target_position <= current_position){
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }else if((target_position< 0) && (current_position > 0)){
+                //if target is a negative position but we currently have a positive number of stocks,
+                // we first sell the stocks we have then short sell the remainder
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(-current_position, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+
+                double remaining_demand = min(abs(target_position*quoted_price_),this->cash_at_hand);
+
+                if(remaining_demand>0){
+                    auto demand = (-remaining_demand/(quoted_price_));
+                    order_num = concat(order_num,1);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::limit);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+                }
+            }else {
+                double remaining_demand = min(abs(excess_demand_market*quoted_price_),this->cash_at_hand);
+                if(remaining_demand>0){
+                    auto sign = excess_demand_market/abs(excess_demand_market);
+                    auto demand = sign * remaining_demand/quoted_price_;
+                    order_num = concat(order_num,1);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::limit);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+
+                }
+            }
+        }
+
+            //when time is not a rebalancing date, adjust positions using excess cash (e.g. from dividends)
+        else
+        {
+            auto disposable_income = this->cash_at_hand - ((1-portfolio_alloc)*this->wealth);
+            if((disposable_income > 0) && (this->cash_at_hand > 0)) {
+                excess_demand_market = (disposable_income * allocation * portfolio_alloc / (quoted_price_)) - current_position;
+
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }
+
+        }
+    }
+    return result_;
+}
+
+
+std::map<int,order>
+funds::noise_demand(){
+    //Params definition
+    map<int,order> result_;
+    auto quotes = this->stocks_on_market;
+    double Beta = 9;//dummy threshold TODO: link this variable with actual earnings
+    double portfolio_alloc = 1;// wealth allocated to stock potfolio
+    double sum_of_signals;
+    double phi; //trading signal for stock i
+    auto t = clock.current_time();
+
+
+
+//Ornstein Uhlenbeck params
+    MatrixXd dX = generateWhiteNoise1(6,3,10000);
+
+    //noise with a half life of 6 years, to match empirical evedence
+    double mean_reversion_rate = 1 - pow(0.5, 1/(6.0*252.0));
+   double sigma = .0012;
+
+    //Ornstein Uhlenbeck noise generation
+    double  X_t ;
+    int i =0;
+    int c =0;
+    map<int, vector<double>> noise;
+
+
+
+//compute a sum of exponents of signals, see McFadden choice function...........................(1)
+    for(auto &[k, v] : quotes){
+        const auto &[time, bid, ask] = v.get_price();
+        auto quoted_price_ = (bid + ask)/2.;
+        auto earnings = v.get_earnings(t);
+        double var;
+        double mean;
+        var = 0.012;//(0.5*pow(sigma,2)) * (1/mean_reversion_rate)*
+              //(1-exp(-2*mean_reversion_rate*int(t)));
+        mean =  0*(1-exp(-mean_reversion_rate * int(t)));
+
+        X_t = mean + sqrt(var) * dX(i%3,t);
+        phi = -(log((quoted_price_)/earnings)-log(Beta)) + X_t;//stock signal
+        sum_of_signals = sum_of_signals + abs(phi);
+        i++;
+
+    }
+
+
+    c=0;
+//compute the ratio of each stock's signal relative to sum described in (1)
+    for(auto &[k, v] : quotes){
+        //the following line searches whether a trader already holds inventory of the stock in subject
+        // and stores the value in j
+        auto i = stocks_at_hand.find(k);
+        double current_position = 0;
+        if (stocks_at_hand.end() != i){current_position = i->second;}
+        const auto &[time, bid, ask] = v.get_price();
+        auto quoted_price_ = (bid + ask)/2.;
+        auto earnings = v.get_earnings(t);
+
+        double var;
+        double mean;
+        var = 0.012;// (0.5*pow(sigma,2)) * (1/mean_reversion_rate)*
+             // (1-exp(-2*mean_reversion_rate*int(t)));
+        mean =  0*(1-exp(-mean_reversion_rate * int(t)));
+        X_t = mean + sqrt(var) * dX(c%3,t);
+        c++;
+        phi = -(log((quoted_price_)/earnings)-log(Beta)) + X_t;
+        auto allocation = phi/sum_of_signals;//stock wealth allocation
+
+
+
+//investment in the subject stock
+        double excess_demand_market;
+        double excess_demand_limit;
+        order market_order;
+        order limit_order;
+        auto order_num = concat(t,k);
+
+
+
+//......we compute a market order which represents an instantaneous trader's entry into a position given
+        // the day is a rebalancing date or the fund has received new investment wealth inflow.
+        if(t == this->reb_period*floor(t/this->reb_period)){
+
+            auto target_position = this->wealth * allocation * portfolio_alloc/(quoted_price_);
+            excess_demand_market = target_position - current_position;
+            bool liquidity_required;
+
+            //check if there are resources to make the desired trade
+            if(0 <= target_position &&  target_position <= current_position){
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }else if((target_position< 0) && (current_position > 0)){
+                //if target is a negative position but we currently have a positive number of stocks,
+                // we first sell the stocks we have then short sell the remainder
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(-current_position, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+
+                double remaining_demand = min(abs(target_position*quoted_price_),this->cash_at_hand);
+
+                if(remaining_demand>0){
+                    auto demand = (-remaining_demand/(quoted_price_));
+                    order_num = concat(order_num,1);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::limit);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+                }
+            }else {
+                double remaining_demand = min(abs(excess_demand_market*quoted_price_),this->cash_at_hand);
+                if(remaining_demand>0){
+                    auto sign = excess_demand_market/abs(excess_demand_market);
+                    auto demand = sign * remaining_demand/quoted_price_;
+                    order_num = concat(order_num,1);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::limit);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+
+                }
+            }
+            //put limit orders to close positions when target is reached
+            if((this->stocks_at_hand.find(k)->second<0) && (this->cash_at_hand>0)) {
+
+                double disposable_income_ = min(abs(this->stocks_at_hand.find(k)->second*quoted_price_), this->cash_at_hand);
+                order_num = concat(order_num, 1);
+                excess_demand_limit = disposable_income_/quoted_price_;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+
+            }else if(this->stocks_at_hand.find(k)->second>0){
+                order_num = concat(order_num, 1);
+                excess_demand_limit = -this->stocks_at_hand.find(k)->second;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+            }
+        }
+
+            //when time is not a rebalancing date, adjust positions using excess cash (e.g. from dividends)
+        else
+        {
+            auto disposable_income = this->cash_at_hand - ((1-portfolio_alloc)*this->wealth);
+            if((disposable_income > 0) && (this->cash_at_hand > 0)) {
+                excess_demand_market = (disposable_income * allocation * portfolio_alloc / (quoted_price_)) - current_position;
+
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }
+
+            //put limit orders to close positions when target is reached
+            if((this->stocks_at_hand.find(k)->second<0) && (this->cash_at_hand>0)) {
+
+                double disposable_income_ = min(abs(this->stocks_at_hand.find(k)->second*quoted_price_), this->cash_at_hand);
+                order_num = concat(order_num, 1);
+                excess_demand_limit = disposable_income_/quoted_price_;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+
+            }else if(this->stocks_at_hand.find(k)->second>0){
+                order_num = concat(order_num, 1);
+                excess_demand_limit = -this->stocks_at_hand.find(k)->second;
+                limit_order.set_id(this->get_identifier());
+                limit_order.set_order_type(order::limit);
+                limit_order.set_ordered_asset(k);
+                auto target_price = Beta * earnings;
+                limit_order.set_order_size(excess_demand_limit, target_price);
+                limit_order.set_status(order::active);
+                result_.emplace(order_num, limit_order);
+            }
+
+        }
+    }
+    return result_;
+}
+
+std::map<int, order> funds::index_demand(){
+    //Params definition
+    map<int,order> result_;
+    auto quotes = this->stocks_on_market;
+    double portfolio_alloc = 1;// wealth allocated to stock potfolio
+    double sum_of_signals;
+    double phi; //trading signal for stock i
+    auto t = clock.current_time();
+
+
+
+
+
+
+//compute a sum of exponents of signals, see McFadden choice function...........................(1)
+    for(auto &[k, v] : quotes){
+        const auto &[time, bid,ask] = v.get_price();
+        auto quoted_price_ = (bid + ask)/2.;
+        auto shares_outstanding = v.get_shares_outstanding();
+        phi = shares_outstanding * quoted_price_;//stock signal
+        sum_of_signals = sum_of_signals + abs(phi);
+    }
+
+
+
+//compute the ratio of each stock's signal relative to sum described in (1)
+    for(auto &[k, v] : quotes) {
+        //the following line searches whether a trader already holds inventory of the stock in subject
+        // and stores the value in j
+        auto i = stocks_at_hand.find(k);
+        double current_position = 0;
+        if (stocks_at_hand.end() != i) { current_position = i->second; }
+        const auto &[time, bid, ask] = v.get_price();
+        auto shares_outstanding = v.get_shares_outstanding();
+        auto quoted_price_ = (bid + ask) / 2.;
+
+
+        phi = shares_outstanding * quoted_price_;
+        auto allocation = phi / sum_of_signals; //stock wealth allocation
+
+
+
+
+//investment in the subject stock
+        double excess_demand_market;
+        double excess_demand_limit;
+        order market_order;
+        order limit_order;
+
+
+        int order_num;
+        order_num = concat(t,k);
+        //this->reb_period = 1;
+
+
+//......we compute a market order which represents an instantaneous trader's entry into a position given
+        // the day is a rebalancing date or the fund has received new investment wealth inflow.
+        if(t == this->reb_period*floor(t/this->reb_period)){
+
+            auto target_position = this->wealth * allocation * portfolio_alloc/(quoted_price_);
+            excess_demand_market = target_position - current_position;
+            bool liquidity_required;
+
+            //check if there are resources to make the desired trade
+            if(0 <= target_position &&  target_position <= current_position){
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(excess_demand_market, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+            }else if((target_position< 0) && (current_position > 0)){
+                //if target is a negative position but we currently have a positive number of stocks,
+                // we first sell the stocks we have then short sell the remainder
+                order_num = concat(order_num,1);
+                market_order.set_id(this->get_identifier());
+                market_order.set_order_type(order::limit);
+                std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                market_order.set_ordered_asset(k);
+                market_order.set_order_size(-current_position, quoted_price_);
+                market_order.set_status(order::active);
+                result_.emplace(order_num, market_order);
+
+
+                double remaining_demand = min(abs(target_position*quoted_price_),this->cash_at_hand);
+
+                if(remaining_demand>0){
+                    auto demand = (-remaining_demand/(quoted_price_));
+                    order_num = concat(order_num,1);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::limit);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+                }
+            }else {
+                double remaining_demand = min(abs(excess_demand_market*quoted_price_),this->cash_at_hand);
+                if(remaining_demand>0){
+                    auto sign = excess_demand_market/abs(excess_demand_market);
+                    auto demand = sign * remaining_demand/quoted_price_;
+                    order_num = concat(order_num,1);
+                    market_order.set_id(this->get_identifier());
+                    market_order.set_order_type(order::limit);
+                    std::cout<<this->fund_philosophy<<"threw market order"<<this->wealth<<std::endl;
+                    market_order.set_ordered_asset(k);
+                    market_order.set_order_size(demand, quoted_price_);
+                    market_order.set_status(order::active);
+                    result_.emplace(order_num, market_order);
+
+                }
+            }
+
+        }
+    }
+    return result_;
+}
