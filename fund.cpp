@@ -6,6 +6,7 @@
 
 
 
+
 //.......create unique identifier for each instance
 fund::fund(){
 
@@ -56,7 +57,7 @@ double fund::get_mkt_return(int t){
 
     for(auto &[k,v]:this->stocks_on_market){
         double mkt_share = v.get_shares_outstanding()/tot_mkt_share;
-        double prev_quote = v.get_hist_price().find(t-2)->second;
+        double prev_quote = v.get_hist_price().rbegin()[1];
 
         mkt_prev_price += prev_quote *mkt_share;
         mkt_price += ((get<1>(v.get_price())+get<2>(v.get_price()))/2.)*mkt_share;
@@ -86,8 +87,8 @@ void fund::set_sum_squared_mkt_return(int t){
 
 void fund::set_sum_returns(int t){
     for(auto &[k,v] : this->stocks_on_market) {
-        double curr_price = v.get_hist_price().find(t-1)->second;
-        double prev_price = v.get_hist_price().find(t-2)->second;
+        double curr_price = v.get_hist_price().back();
+        double prev_price = v.get_hist_price().rbegin()[1];
         double returns = (curr_price-prev_price)/prev_price;
         auto i = this->sum_returns.find(k);
         if(i != this->sum_returns.end()){
@@ -102,8 +103,8 @@ void fund::set_sum_returns(int t){
 
 void fund::set_sum_squared_returns(int t){
     for(auto &[k,v] : this->stocks_on_market) {
-        double curr_price = v.get_hist_price().find(t-1)->second;
-        double prev_price = v.get_hist_price().find(t-2)->second;
+        double curr_price = v.get_hist_price().back();
+        double prev_price = v.get_hist_price().rbegin()[1];
         double returns = (curr_price-prev_price)/prev_price;
         auto i = this->sum_squared_returns.find(k);
         if(i != this->sum_squared_returns.end()){
@@ -120,8 +121,8 @@ void fund::set_sum_squared_returns(int t){
 void fund::set_sum_market_by_stock_returns(int t){
 
     for(auto &[k,v]:this->stocks_on_market){
-        double curr_price = v.get_hist_price().find(t-1)->second;
-        double prev_price = v.get_hist_price().find(t-2)->second;
+        double curr_price = v.get_hist_price().back();
+        double prev_price = v.get_hist_price().rbegin()[1];
         double returns = (curr_price-prev_price)/prev_price;
         double mkt_by_stock_returns = this->get_mkt_return(t)*returns;
 
@@ -285,12 +286,14 @@ fund::balance_bd(int t,vector<order> &executed_orders){
 
 //.....update stocks at hand (*NB negative number of stocks at hand represent short positions)
             for(auto &x : executed_orders){
-                auto y = this->stocks_at_hand.find(x.get_ordered_asset());
-                    if (y != this->stocks_at_hand.end()){
-                        this->stocks_at_hand.find(x.get_ordered_asset())->second += x.get_order_size();
-                            }else {
-                        this->stocks_at_hand.emplace(x.get_ordered_asset(),x.get_order_size());
-            }
+                for(auto &[k,v]:this->stocks_at_hand){
+                    if(k==x.get_ordered_asset()){
+                        auto g = x.get_order_size();
+
+                        v += x.get_order_size();
+                    }
+                }
+
         }
 
 
