@@ -18,7 +18,7 @@ private:
     vector<double> dividends;
     vector<double> free_cash_flow;
     tuple<int, double> market_price;//int-market_watch
-    map<int, double> historical_price;//int-market_watch
+    vector<double> historical_price;//int-market_watch
     double bid_price;
     double ask_price;
 
@@ -51,8 +51,8 @@ int get_identifier();
 int get_shares_outstanding();
 map<int, double> get_market_capital();
 tuple<int, double, double> get_price();
-map<int, double> get_price_range(int range);
-map<int, double> get_hist_price();
+vector<double> get_price_range(int range);
+vector<double> get_hist_price();
 
  void set_clock(market_watch &timer);
 
