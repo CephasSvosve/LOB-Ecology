@@ -14,6 +14,7 @@
 #include "market_watch.h"
 #include "stochastic_math.h"
 #include <random>
+#include "order.h"
 
 
 
@@ -30,12 +31,23 @@ private:
 public:
 funds();
 
-enum trading_strategy{fundamental_value=0
-//                        ,growth = 1
-                            , noise=1
-                                , momentum_investment=2
+enum trading_strategy{aggressive_fundamental_value=0
+                            , aggressive_noise=1
+                                , aggressive_momentum_investment=2
+                                    , aggressive_growth = 3
+                                        , aggressive_index =4
+                                            , fundamental_value =5
+                                                , noise = 6
+                                                    , momentum_investment = 7
+                                                        , growth = 8
+                                                            ,index = 9
+
 
                                        };
+
+
+
+
 trading_strategy fund_philosophy;
 
 void trade_strategy(trading_strategy tradingStrategy);
@@ -45,31 +57,53 @@ map<int, order>
 invest();
 
 
-double
-compute_earnings(company &stock, int &time, int &reb_period);
+int concat(int a, int b);
 
-
-MatrixXd
+static MatrixXd
 generateWhiteNoise1(int seed, int rows, int columns);
 
 
-double
+static double
 lateralcorrcoef(VectorXd a);
 
 
 std::map<int,order>
-value_demand();
+ag_value_demand(),
 
 
-std::map<int,order>
-growth_demand();
 
-std::map<int,order>
-momentum_demand();
+ag_growth_demand(),
 
 
-std::map<int,order>
-noise_demand();
+ag_momentum_demand(),
+
+
+
+ag_noise_demand(),
+
+
+
+ag_index_demand(),
+
+
+
+value_demand(),
+
+
+
+growth_demand(),
+
+
+momentum_demand(),
+
+
+
+noise_demand(),
+
+
+
+index_demand();
+
 
 
 
