@@ -31,13 +31,14 @@ private:
     map<int,double> best_bid;
     map<int,double> best_ask;
     map<int,double> mid_price;
+    map<int,vector<order>> bid;
 
 
 public:
     map<int, funds*> trading_institutions;
     map<int,company>
             &tradeable_assets();
-    map<int,vector<order>> bid;
+
     void register_assets(int number_of_assets);
     void generate_fundamentals();
     void register_traders(vector<funds*> participants);
@@ -48,7 +49,7 @@ public:
     void stack_bid(int id, order order_);
     void stack_ask(int id, order order_);
     void clear();
-    void update_price(int k);
+    void update_price(int k, double reg);
 
 
     bool not_similar(vector<order> &x);
