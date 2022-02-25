@@ -12,7 +12,10 @@ int main() {
 
 //set overal wealth on the market
 
-double market_wealth = 10'000;
+double market_wealth = 1.68e10;
+double shares_outstanding = 0.8*market_wealth/300;
+double market_cash = 0.2*market_wealth;
+
 //Define the price setter
 price_setter market;
 
@@ -27,39 +30,75 @@ market.generate_fundamentals();
 market.set_initial_quotes();
 
 //set price setter's wealth
-market.initial_wealth(market_wealth, 5'000);
+market.initial_wealth(0, shares_outstanding);
+
+
 
 //initialize traders
-funds value_investor,  noisy_investors, momentum_investors;
-vector<funds*> participants = {&value_investor
-                                    , &noisy_investors
-                                        , &momentum_investors
+funds  aggressive_value
+            , averse_value
+                ,aggressive_noisy
+                    , averse_noisy
+                        ,aggressive_momentum
+                            , averse_momentum
+                                ,aggressive_growth
+                                    , averse_growth
+                ;
+
+
+vector<funds*> participants = {&aggressive_value
+                                    , &averse_value
+                                        , &aggressive_noisy
+                                            , &averse_noisy
+                                                , &aggressive_momentum
+                                                    , &averse_momentum
+                                                        , &aggressive_growth
+                                                             , &averse_growth
                                             };
 
 
 
-
+//number of participants
+int investor_population = participants.size();
 //inform traders about assets on the market
     for(auto &p : participants){
         p->get_inform(market.tradeable_assets());
     }
 
 
-    value_investor.trade_strategy(funds::fundamental_value);
-    value_investor.set_reb_period(1);
-    value_investor.initial_wealth(0.25*market_wealth,500);
+    aggressive_value.trade_strategy(funds::aggressive_fundamental_value);
+    aggressive_value.set_reb_period(63);
+    aggressive_value.initial_wealth((1./investor_population)*market_cash,0.);
 
-//    growth_investor.trade_strategy(funds::growth);
-//    growth_investor.set_reb_period(63);
-//    growth_investor.initial_wealth(0.25*market_wealth,500'000);
+    averse_value.trade_strategy(funds::fundamental_value);
+    averse_value.set_reb_period(63);
+    averse_value.initial_wealth((1./investor_population)*market_cash,0.);
 
-    noisy_investors.trade_strategy(funds::noise);
-    noisy_investors.set_reb_period(63);
-    noisy_investors.initial_wealth(0.25*market_wealth,500);
+    aggressive_growth.trade_strategy(funds::aggressive_growth);
+    aggressive_growth.set_reb_period(63);
+    aggressive_growth.initial_wealth((1./investor_population)*market_cash,0.);
 
-    momentum_investors.trade_strategy(funds::momentum_investment);
-    momentum_investors.set_reb_period(200);
-    momentum_investors.initial_wealth(0.25*market_wealth,500);
+    averse_growth.trade_strategy(funds::growth);
+    averse_growth.set_reb_period(63);
+    averse_growth.initial_wealth((1./investor_population)*market_cash,0.);
+
+
+    aggressive_noisy.trade_strategy(funds::aggressive_noise);
+    aggressive_noisy.set_reb_period(1);
+    aggressive_noisy.initial_wealth((1./investor_population)*market_cash,0.);
+
+    averse_noisy.trade_strategy(funds::noise);
+    averse_noisy.set_reb_period(1);
+    averse_noisy.initial_wealth((1./investor_population)*market_cash,0.);
+
+
+    aggressive_momentum.trade_strategy(funds::aggressive_momentum_investment);
+    aggressive_momentum.set_reb_period(21);
+    aggressive_momentum.initial_wealth((1./investor_population)*market_cash,0.);
+
+    averse_momentum.trade_strategy(funds::momentum_investment);
+    averse_momentum.set_reb_period(21);
+    averse_momentum.initial_wealth((1./investor_population)*market_cash,0.);
 
 
 
@@ -74,40 +113,50 @@ std::ofstream myfile;
 myfile.open ("NewMarketEcology.csv");
 
 
-do{
+while(watch.current_time() < 10000){
 
+
+
+int g = watch.current_time();
+
+int kj = watch.current_time();
+//receive orders from traders
+    market.receive_orders();
+
+//clear market
+
+
+
+//std::cout<< watch.current_time() << ". ";
+
+for(auto &[k,v] : market.tradeable_assets()){
+        if(k==2){
+            double st=0;
+                myfile<<watch.current_time()<<","<<(get<1>(v.get_price())+get<2>(v.get_price()))/2<<","<<v.get_dividend(watch.current_time())<<","<<market.wealth<<",";
+                for(auto &[x,y]:market.trading_institutions){
+                    myfile << y->stocks_at_hand.find(2)->second<<",";
+                     st += y->stocks_at_hand.find(2)->second;
+                    std::cout <<y->get_identifier() <<" "<<y->stocks_at_hand.find(2)->second<<",";
+
+                }
+            myfile<< market.stocks_at_hand.find(2)->second<<",";
+                myfile<< st + market.stocks_at_hand.find(2)->second<<",";
+            }
+
+        //myfile<<(get<1>(v.get_price())+get<2>(v.get_price()))/2<<",";
+//        std::cout << v.get_identifier() << ". "<< (get<1>(v.get_price())+get<2>(v.get_price()))/2<<" ";
+}
+//    std::cout<<std::endl;
+    myfile << std::endl;
+    market.clear();
+    watch.tick();
 
     //update traders balances before orders
     for(auto &p : participants){
         p->balance_cf(watch.current_time());
-
+    }
 
 }
-
-
-     //receive orders from traders
-    market.receive_orders();
-
-    //clear market
-   market.clear();
-//   std::cout<< watch.current_time() << ". ";
-
-    for(auto &[k,v] : market.tradeable_assets()){
-        if(k==2){
-            if(!market.bid.find(k)->second.empty()){
-            myfile<<watch.current_time()<<","<<v.get_earnings(watch.current_time())<<","<<market.bid.find(k)->second.rbegin()->get_id()<<","<<market.bid.find(k)->second.rbegin()->get_proposed_price();
-        }else{
-                myfile<<watch.current_time()<<","<<v.get_earnings(watch.current_time())<<",";
-            } }
-        //myfile<<(get<1>(v.get_price())+get<2>(v.get_price()))/2<<",";
-//        std::cout << v.get_identifier() << ". "<< (get<1>(v.get_price())+get<2>(v.get_price()))/2<<" ";
-    }
-//    std::cout<<std::endl;
-    myfile << std::endl;
-
-    watch.tick();
-
-}while(watch.current_time() < 1000);
 
 myfile.close();
 
