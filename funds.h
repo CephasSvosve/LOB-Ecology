@@ -57,7 +57,7 @@ map<int, order>
 invest();
 
 
-int concat(int a, int b);
+static int concat(int a, int b);
 
 static MatrixXd
 generateWhiteNoise1(int seed, int rows, int columns);
