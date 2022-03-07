@@ -26,6 +26,7 @@ public:
     double  wealth;
     double  cash_at_hand;
     double  interest_on_cash;
+    double target_price_ = 0;
     map<int, double>  debtors;
     map<int, double>  dividends_received;
     map<int, double>  stocks_at_hand;
@@ -54,10 +55,10 @@ public:
     double sum_squared_mkt_return=0;
 
 
-void
+static void
    double_entry(map<int, double> &debit
                 , map<int, double> &credit
-                    , map<int, double> amount);
+                    , const map<int, double>& amount);
 
 
 //metric getters
@@ -90,7 +91,7 @@ void initial_wealth(double cash, double stocks);
 
  //balancesheet updaters
 double
-current_balance(map<int, double> mp);
+current_balance(const map<int, double>& mp);
 
 void
 balance_cf(int t);
