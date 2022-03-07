@@ -2,6 +2,7 @@
 #include "company.h"
 #include <math.h>
 #include <iostream>
+#include <utility>
 
 
 company::company(){
@@ -23,7 +24,7 @@ void company::stack_mp(std::map<T,H> &mp,int maxsize, T indx, H val){
 //returns the most recent paid-out dividend
 double
 company::get_dividend(int t){
-    auto dividend_ = this->dividends[t];
+    auto dividend_ = (this->dividends[floor(t/63)]);
     return dividend_;
 }
 
@@ -44,7 +45,7 @@ company::get_free_cash_flow(){
     return free_cash_flow_;
 }
 int
-company::get_identifier(){
+company::get_identifier() const{
     return this->identifier;
 }
 
@@ -55,7 +56,7 @@ company::get_hist_price(){
 }
 
 int
-company::get_shares_outstanding(){
+company::get_shares_outstanding() const{
     return this->shares_outstanding;
 }
 
@@ -120,6 +121,17 @@ company::get_price(){
 
 }
 
+double
+company::get_midprice(){
+    double result = 0;
+    double a = this->bid_price;
+    double b = this->ask_price;
+    result = (a+b)/2.;
+
+    return result;
+
+}
+
 // a method overload which returns price at a given time in history
 vector<double>
 company::get_price_range(int range){
@@ -135,7 +147,7 @@ company::get_price_range(int range){
 }
 
 void company::set_earnings_process(vector<double> ep){
-    this->earnings = ep;
+    this->earnings = std::move(ep);
 }
 
 
