@@ -35,23 +35,53 @@ market_watch clock;
 template <typename T, typename H>
 void stack_mp(std::map<T,H> &mp,int maxsize, T indx, H val);
 
-void set_price(int t, double bid, double ask);
-void set_identifier(int identifier);
-void set_shares_outstanding(int outstanding_shares);
-void set_market_capital();
-void set_earnings_process(vector<double> ep);
-void set_dividends_process(vector<double> dp);
-void set_free_cash_flow_process(vector<double> dp);
+
+//setters
+void
+set_price(int t, double bid, double ask);
+
+void
+set_identifier(int identifier);
+
+void
+set_shares_outstanding(int outstanding_shares);
+
+void
+set_market_capital();
+
+void
+set_earnings_process(vector<double> ep);
+
+void
+set_dividends_process(vector<double> dp);
+
+void
+set_free_cash_flow_process(vector<double> dp);
 
 
+
+
+//getters
 double get_dividend(int t);
+
 double get_earnings(int t);
+
 double get_free_cash_flow();
-int get_identifier();
-int get_shares_outstanding();
+
+[[nodiscard]] int
+get_identifier() const;
+
+[[nodiscard]] int
+get_shares_outstanding() const;
+
 map<int, double> get_market_capital();
+
 tuple<int, double, double> get_price();
+
+double get_midprice();
+
 vector<double> get_price_range(int range);
+
 vector<double> get_hist_price();
 
  void set_clock(market_watch &timer);
