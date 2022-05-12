@@ -1,4 +1,8 @@
 
+
+
+
+
 #include "company.h"
 #include <math.h>
 #include <iostream>
@@ -7,7 +11,6 @@
 
 company::company(){
     this->set_identifier(create_identity(company_));
-    std::cout<<"id "<<this->identifier;
 }
 template <typename T, typename H>
 void company::stack_mp(std::map<T,H> &mp,int maxsize, T indx, H val){
@@ -23,9 +26,27 @@ void company::stack_mp(std::map<T,H> &mp,int maxsize, T indx, H val){
 
 //returns the most recent paid-out dividend
 double
-company::get_dividend(int t){
-    auto dividend_ = (this->dividends[floor(t/63)]);
+company::get_dividend(double t){
+
+        double dividend_ = (this->dividends[int(t)]);
+
     return dividend_;
+}
+
+vector<double> company::get_dividend_process(){
+    return this->dividends;
+}
+
+
+double
+company::get_value(double t){
+    double value = (this->intrinsic_value[int(t)]);
+    return value;
+}
+
+vector<double>
+company::get_intrinsic_value(){
+    return this->intrinsic_value;
 }
 
 
@@ -41,7 +62,7 @@ company::get_earnings(int t) {
 //returns the most recent reported free_cash_flow
 double
 company::get_free_cash_flow(){
-    auto free_cash_flow_ = this->free_cash_flow[floor(clock.current_time())];
+    auto free_cash_flow_ = this->free_cash_flow[floor(clock->current_time())];
     return free_cash_flow_;
 }
 int
@@ -101,10 +122,10 @@ company::set_market_capital(){
     double market_cap = get<1>(this->get_price()) * this->get_shares_outstanding();
 
     if(market_capital.size()<250){
-        market_capital.emplace(int(this->clock.current_time()),market_cap);
+        market_capital.emplace(int(this->clock->current_time()),market_cap);
     }else{
         market_capital.erase(market_capital.begin());
-        market_capital.emplace(int(this->clock.current_time()),market_cap);
+        market_capital.emplace(int(this->clock->current_time()),market_cap);
     }
 
 }
@@ -152,14 +173,22 @@ void company::set_earnings_process(vector<double> ep){
 
 
 void company::set_dividends_process(vector<double> dp){
-    this->dividends = dp;
+    this->dividends = std::move(dp);
+}
+
+void company::set_intrinsic_value(vector<double> iv){
+    this->intrinsic_value = std::move(iv);
 }
 
 void company::set_free_cash_flow_process(vector<double> fcfp){
-    this->free_cash_flow = fcfp;
+    this->free_cash_flow = std::move(fcfp);
 }
 
 
-void company::set_clock(market_watch &timer){
-    this->clock = timer;
+void company::set_clock(market_watch *watch_){
+    this->clock = watch_;
 }
+
+
+
+
