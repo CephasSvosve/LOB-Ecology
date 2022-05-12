@@ -4,14 +4,41 @@
 
 #ifndef UNTITLED30_TIME_POINT_H
 #define UNTITLED30_TIME_POINT_H
-class market_watch{
-public:
-    int lower=0;
-    int upper;
+#include <chrono>
 
-    void tick();
-    int current_time();
+
+using namespace std::chrono;
+
+class market_watch{
+
+private:
+
+    time_point<std::chrono::steady_clock, std::chrono::duration<long long int, std::ratio<1, 1000000000>>>
+            start_time,
+            creation_time;
+
+
+
+public:
+    enum dt {one_microsecond = 0, one_millisecond=1, one_second=2, one_minute=3};
+    dt day_length;
+
+
+    explicit market_watch(dt day_length):creation_time(std::chrono::high_resolution_clock::now()){
+        this->day_length = day_length;
+    }
+
+    void start();
+
+    double
+    current_time();
+
+    time_point<std::chrono::steady_clock, std::chrono::duration<long long int, std::ratio<1, 1000000000>>>
+    get_creation_time();
+
+    void reset();
+
 };
 
-static market_watch watch;
+
 #endif //UNTITLED30_TIME_POINT_H
