@@ -1,3 +1,6 @@
+
+
+
 //
 // Created by Cephas Svosve on 20/12/2021.
 //
@@ -17,10 +20,13 @@ private:
     vector<double> earnings;
     vector<double> dividends;
     vector<double> free_cash_flow;
+    vector<double> intrinsic_value;
+
     tuple<int, double> market_price;//int-market_watch
     vector<double> historical_price;//int-market_watch
     double bid_price;
     double ask_price;
+
 
     //properties of a company
     int identifier= 0;
@@ -31,7 +37,7 @@ private:
 public:
 company();
 
-market_watch clock;
+market_watch *clock;
 template <typename T, typename H>
 void stack_mp(std::map<T,H> &mp,int maxsize, T indx, H val);
 
@@ -56,13 +62,25 @@ void
 set_dividends_process(vector<double> dp);
 
 void
+set_intrinsic_value(vector<double> iv);
+
+void
 set_free_cash_flow_process(vector<double> dp);
 
 
-
+void
+set_clock(market_watch *watch_);
 
 //getters
-double get_dividend(int t);
+double get_dividend(double t);
+
+vector<double>
+get_dividend_process();
+
+double get_value(double t);
+
+vector<double>
+get_intrinsic_value();
 
 double get_earnings(int t);
 
@@ -84,7 +102,6 @@ vector<double> get_price_range(int range);
 
 vector<double> get_hist_price();
 
- void set_clock(market_watch &timer);
 
 };
 #endif //UNTITLED30_COMPANY_H
