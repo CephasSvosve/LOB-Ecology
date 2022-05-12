@@ -1,3 +1,6 @@
+
+
+
 //
 // Created by Cephas Svosve on 5/1/2022.
 //
@@ -8,6 +11,7 @@
 #include "stochastic_math.h"
 #include <iostream>
 #include <Eigen/Dense>
+#include <fstream>
 
 using namespace Eigen;
 using namespace std;
@@ -15,17 +19,20 @@ using namespace std;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 enum processes{Earnings, Dividends, Free_Cash_Flows};
 
-static tuple<VectorXd,VectorXd,VectorXd,MatrixXd, double, double> params(processes process){
+static tuple<VectorXd,VectorXd,VectorXd,MatrixXd, map<int,vector<double>>, double> params(processes process){
 //trade period
     double trade_period = 10000;
+    double int_rate = 0.02;
+    double int_rate_12 = pow((1+int_rate),1./12) - 1;
 
 
 
 //cross-sectional correlations
     MatrixXd div_cross_corr(3, 3);
-    div_cross_corr << 1, 0.251, 0.034,
-            0.251, 1, 0.3,
-            0.034,  0.3,1;
+    div_cross_corr <<   1, 0.129529841, 0.035547681,
+                        0.129529841, 1, -0.079728063,
+                        0.035547681,  -0.079728063,1;
+
 
     MatrixXd earnings_cross_corr(3, 3);
     earnings_cross_corr << 1, 0.251, 0.034,
@@ -40,9 +47,11 @@ static tuple<VectorXd,VectorXd,VectorXd,MatrixXd, double, double> params(process
 
 //auto-correlations
     VectorXd div_aut = VectorXd(3);
-    div_aut(0) =        0.02;
-    div_aut(1) =        0.13;
-    div_aut(2) =        0.36;
+    div_aut(0) =        0.819283923;
+    div_aut(1) =        -0.406900449;
+    div_aut(2) =        0.674315309;
+
+
 
     VectorXd earnings_aut = VectorXd(3);
     earnings_aut(0) =   0.02;
@@ -55,15 +64,26 @@ static tuple<VectorXd,VectorXd,VectorXd,MatrixXd, double, double> params(process
     fcf_aut(2) =        0.36;
 
 //mu
+
+//equivalent daily div growth
+
+    double _g1 = pow((1+0.093472171),1./252)-1;
+    double _g2 = pow((1+0.088976849),1./252)-1;
+    double _g3 = pow((1+0.061685269),1./252)-1;
+
+
     VectorXd div_mu = VectorXd(3);
-    div_mu(0) = 000.42;
-    div_mu(1) = 000.53;
-    div_mu(2) = 000.86;
+    div_mu(0) = _g1;//(1./252)* 0.021470588;
+    div_mu(1) = _g2;//(1./252)* 0.011764706;
+    div_mu(2) = _g3;//(1./252)* 0.002352941;
+
+
+
 
     VectorXd earnings_mu = VectorXd(3);
-    earnings_mu(0) = (1./63) * 3.23;
-    earnings_mu(1) = (1./63) * 2.54;
-    earnings_mu(2) = (1./63) * 1.86;
+    earnings_mu(0) = (1./63) *0.031949098;
+    earnings_mu(1) =  (1./63) *0.031869185;
+    earnings_mu(2) =  (1./63) *0.028311525;
 
     VectorXd fcf_mu = VectorXd(3);
     fcf_mu(0) = 0.01;
@@ -72,16 +92,15 @@ static tuple<VectorXd,VectorXd,VectorXd,MatrixXd, double, double> params(process
 
 //sigma
     VectorXd div_sig = VectorXd(3);
-    div_sig(0) =  001.046319;
-    div_sig(1) =  02.7746319;
-    div_sig(2) =  03.7746319;
-
+    div_sig(0) = sqrt(1./252)* 0.042191057;
+    div_sig(1) = sqrt(1./252)* 0.175544468;
+    div_sig(2) = sqrt(1./252)* 0.034144154;
 
 
     VectorXd earnings_sig = VectorXd(3);
-    earnings_sig(0) = (1./63) * 12.62;
-    earnings_sig(1) = (1./63) * 9.23;
-    earnings_sig(2) = (1./63) * 7.42;
+    earnings_sig(0) = (1./63) * 0.121841232;
+    earnings_sig(1) = (1./63) * 0.1921385;
+    earnings_sig(2) = (1./63) * 0.307994611;
 
     VectorXd fcf_sig = VectorXd(3);
     fcf_sig(0) = 001.2;
@@ -89,17 +108,48 @@ static tuple<VectorXd,VectorXd,VectorXd,MatrixXd, double, double> params(process
     fcf_sig(2) = 007.6;
 
     //Initial values
-    double E_o = 40.48; //TODO add initial values for dividends and fcf
-    double D_o = 15.39;//
 
-    tuple<VectorXd,VectorXd,VectorXd,MatrixXd, double,double> parameters;
+    double annuity_factor_1 = (1-pow((1+_g1)/(1+int_rate_12),252))/(int_rate_12-_g1);
+    double annuity_factor_2 = (1-pow((1+_g2)/(1+int_rate_12),252))/(int_rate_12-_g2);
+    double annuity_factor_3 = (1-pow((1+_g3)/(1+int_rate_12),252))/(int_rate_12-_g3);
+
+
+    //equivalent daily payment annuity factor
+    double _a1 = (pow((1+int_rate),-1.))/annuity_factor_1;
+    double _a2 = (pow((1+int_rate),-1.))/annuity_factor_2;
+    double _a3 = (pow((1+int_rate),-1.))/annuity_factor_3;
+
+
+    vector<double> E_o = {10.23,9.16, 7.23}; //TODO add initial values for dividends and fcf
+    vector<double> D_o = {0.07 * _a1,	0.0869 * _a2,	0.2775 * _a3};
+    vector<double> D_o_1 = {0.1075,	0.32,	0.0833};
+    vector<double> FCF_o = {45.39, 42.80, 24.72};
+
+    //initial dividend growth rate
+    vector<double> g_o = {0.23566879,	0,	0.183783784};
+
+    map<int,vector<double>> Earnings_;
+    map<int,vector<double>> Div;
+    map<int,vector<double>> CashFlow;
+
+    Earnings_.emplace(1,E_o);
+
+    Div.emplace(0,g_o);
+    Div.emplace(1,D_o);
+    Div.emplace(2,D_o_1);
+
+    CashFlow.emplace(1,FCF_o);
+
+
+
+    tuple<VectorXd,VectorXd,VectorXd,MatrixXd, map<int,vector<double>>,double> parameters;
 
     if(process == Dividends){
         get<0>(parameters) =div_mu;
         get<1>(parameters) =div_sig;
         get<2>(parameters) =div_aut;
         get<3>(parameters) =div_cross_corr;
-        get<4>(parameters) =D_o;
+        get<4>(parameters) =Div;
         get<5>(parameters) = trade_period;
 
     }else
@@ -108,7 +158,7 @@ static tuple<VectorXd,VectorXd,VectorXd,MatrixXd, double, double> params(process
         get<1>(parameters) =earnings_sig;
         get<2>(parameters) =earnings_aut;
         get<3>(parameters) =earnings_cross_corr;
-        get<4>(parameters) =E_o;
+        get<4>(parameters) =Earnings_;
         get<5>(parameters) = trade_period;
     }else
     if(process == Free_Cash_Flows){
@@ -116,7 +166,7 @@ static tuple<VectorXd,VectorXd,VectorXd,MatrixXd, double, double> params(process
         get<1>(parameters) =fcf_sig;
         get<2>(parameters) =fcf_aut;
         get<3>(parameters) =fcf_cross_corr;
-        get<4>(parameters) =E_o;
+        get<4>(parameters) =CashFlow;
         get<5>(parameters) = trade_period;
 
     }
@@ -126,21 +176,51 @@ return parameters;
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-static vector<double> load_process(double P_o, int trade_period, int tickerID, VectorXd mu, VectorXd sig, double dt, MatrixXd dU){
+static vector<double> load_process(map<int,vector<double>> P_o, int trade_period, int tickerID, VectorXd mu, VectorXd sig, double dt, MatrixXd dU){
     vector<double> process1;
-  // distribution in range [1, 6]
+    vector<double> div_process;
+    vector<double> div_growth;
+std::ofstream noise;
+noise.open("noisefile.csv");
+    noise<<"growth"<<","<<"D_t_1"<<","<<"D_t"<<","<< "dU(tickerIDt)"<<","<<"sig"<<"mu"<<","<<","<<"altered_sig"<<std::endl;
 
-    for(int i = 0; i < trade_period; i++) {
+
+
+
+    int size = ceil(trade_period);
+
+    for(int t = 0; t < size; t++) {
         if (process1.empty()) {
-            double a = P_o ;
+            double a = P_o.find(1)->second.at(tickerID);
 
             process1.push_back(a);
+
+
+
+                div_process.push_back(a);
+
+
         }else {
-            double y = (process1[i - 1] )+ mu(tickerID)  * dt + sig(tickerID) * dU(tickerID, i);
+
+
+
+
+
+            double y  = (process1[t-1]) + ((mu(tickerID))*process1[t-1]) + (sig(tickerID) * process1[t-1] * dU(tickerID, t));
+
+
+            noise<<""<<","<<process1[t-1]<<","<<y<<","<< dU(tickerID, t)<<","<<sig(tickerID)<<","<<(mu(tickerID) - (pow(sig(tickerID),2.))/2.) * (1/252.)<<","<<(sig(tickerID) * sqrt(1/252.) * dU(tickerID, t))<<std::endl;
+
+
             process1.push_back(y);
-        }
+
+
+            div_process.push_back(y);
+
+                }
     }
-    return process1;
+    noise.close();
+    return div_process;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -169,7 +249,7 @@ static vector<vector<double>> generate(processes process){
     mu = get<0>(params(process));
 
 //initial value
-    double P_o = get<4>(params((process)));
+    map<int,vector<double>> P_o = get<4>(params((process)));
 
     MatrixXd dU(3,trade_period);
     dU = stats::generateColoredNoise(trade_period, Aut, divCrossCorr);
