@@ -1,3 +1,5 @@
+
+
 //
 // Created by Cephas Svosve on 20/12/2021.
 //
@@ -24,16 +26,15 @@ public:
 
 
     double  wealth;
-    double  cash_at_hand;
+    double bond_at_hand =0.;
+    double  cash_at_hand=0;
     double  interest_on_cash;
-    double target_price_ = 0;
-    map<int, double>  debtors;
     map<int, double>  dividends_received;
     map<int, double>  stocks_at_hand;
+    map<int, double> initial_invetory;
     map<int, double>  equities;//derived from number_of_shares
 
     //Liabilities
-    double interest_on_loans;
     map<int, double>  borrowed_stocks;
     map<int, double>  loans_received;//int-key|v
     map<int, double>  transaction_cost;
@@ -48,11 +49,16 @@ public:
     //derived metrics
     map<int, double>  beta;
     map<int, double>  CAPM;
-
+    map<int, double>  signal;
+    map<int, double>  noise1;
+    map<int, double>  number_of_divpayouts;
+    double prev_noise = 0;
     //overall market's metrics
     double mkt_return=0;
     double sum_mkt_return=0;
     double sum_squared_mkt_return=0;
+    int run =0;
+
 
 
 static void
@@ -94,10 +100,10 @@ double
 current_balance(const map<int, double>& mp);
 
 void
-balance_cf(int t);
+balance_cf(double t);
 
 void
-balance_bd(int t, vector<order> &executed_orders);
+balance_bd(vector<order> &executed_orders);
 
 void
 balance();
