@@ -9,16 +9,10 @@
 class order {
 private:
 
-     bool limit_ = true;
-     bool market_ = false;
-     bool active_ = true;
-     bool cancelled_ = false;
-
-
-    int order_id;//customer identity
-    bool order_status;
-    int asset_id;
-    bool order_type;// can be limit or market
+    int order_id=0;//customer identity
+    bool order_status=false;
+    int asset_id=0;
+    bool order_type=false;// can be limit or market
     double order_size=0;//number of stocks required
     double proposed_price=0;
 
@@ -28,7 +22,7 @@ public:
 order(){};
 
 enum ORDER_TYPE{limit = 1, market = 0};
-enum ORDER_STATUS{active = 1, cancelled = 0};
+enum ORDER_STATUS{active = 1, filled = 0};
 
 //getters
 int get_id();
