@@ -1,3 +1,7 @@
+
+
+
+
 //
 // Created by Cephas Svosve on 20/12/2021.
 //
@@ -197,6 +201,7 @@ void fund::initial_wealth(double cash, double stocks){
     this->cash_at_hand =  cash;
     for(auto &[k,v]:this->stocks_on_market){
         this->stocks_at_hand.emplace(k,stocks);
+        this->initial_invetory.emplace(k,stocks);
     }
     balance_cf(0);
 }
@@ -227,12 +232,12 @@ fund::double_entry(map<int, double> &debit
 
 
 void
-fund::balance_cf(int t){
+fund::balance_cf(double t){
 //calculate wealth just before executing orders to account for
     // wealth distribution changes due to interest and dividends;
     //......update wealth
         auto aq = this->wealth;
-    this->wealth = this->cash_at_hand;
+    this->wealth = this->cash_at_hand + this->bond_at_hand;
     for(auto &[x,v] : this->stocks_at_hand){
         auto quote = this->stocks_on_market.find(x)->second.get_midprice();
         double total = quote * v;
@@ -241,29 +246,41 @@ fund::balance_cf(int t){
     auto ar = this->wealth;
         //......we start by adding interest to the cash at hand, assuming all cash is invested in a govt bond
             double interest_rate = pow(1.02,(1./252.))-1;
-                this->interest_on_cash = interest_rate * this->cash_at_hand;
+                this->interest_on_cash = interest_rate * (this->bond_at_hand+ this->cash_at_hand);
                     this->cash_at_hand += interest_on_cash;
                         this->wealth += interest_on_cash;
 
     auto as = this->wealth;
 //......we compute dividends income as the sum of dividends received from all stocks at hand
-double div_ =0;
+double div_ =0.;
     for(auto &[i,v] : this->stocks_at_hand) {
+        if (number_of_divpayouts.find(i) == number_of_divpayouts.end()){
+            number_of_divpayouts.emplace(i,0);
+        }
+
+        if (number_of_divpayouts.find(i)->second < int (t)){
+            number_of_divpayouts.find(i)++;
+
         if (this->stocks_at_hand.find(i) != this->stocks_at_hand.end()) {
-            if (t == 63*floor(t/63)){
-            auto dividend = this->stocks_on_market.find(i)->second.get_dividend(t);//TODO correct dividend time to t
+
+            auto dividend = this->stocks_on_market.find(i)->second.get_dividend(t);
             div_ += dividend * v;
-        }
+
+
     } else {
-            div_ = 0;
+            div_ = 0.;
         }
-    }
+        }
+        else{
+                div_ = 0.;
+            }
+        }
 
     if(this->dividends_received.size()<10){
-        this->dividends_received.emplace(this->clock.current_time(),div_);
+        this->dividends_received.emplace(this->clock->current_time(),div_);
     }else{
         this->dividends_received.erase(this->dividends_received.begin());
-        this->dividends_received.emplace(this->clock.current_time(),div_);
+        this->dividends_received.emplace(this->clock->current_time(),div_);
     }
 
                     this->cash_at_hand += div_;
@@ -277,7 +294,7 @@ double div_ =0;
 
 
 void
-fund::balance_bd(int t,vector<order> &executed_orders){
+fund::balance_bd(vector<order> &executed_orders){
 //we update records from the balance carried forward to account
     // for wealth distribution changes due to trade executions
 
@@ -296,6 +313,7 @@ fund::balance_bd(int t,vector<order> &executed_orders){
                 for(auto &[k,v]:this->stocks_at_hand){
                     if(k==x.get_ordered_asset()){
                         this->stocks_at_hand.find(k)->second += x.get_order_size();
+
                     }
                 }
         }
